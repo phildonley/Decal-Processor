@@ -68,12 +68,16 @@ function processFile(file, stdFld, rotFld) {
   var rotDoc = stdDoc.duplicate("RotCanvas");
 
   // 2b) FLATTEN & SAVE STANDARD
-  app.activeDocument = stdDoc;            // ← ensure it’s frontmost
+  app.activeDocument = stdDoc;
   stdDoc.flatten();
-  var outStd = new File(stdFld, file.name);
-  stdDoc.saveAs(outStd, new JPEGSaveOptions(), true);
+  stdDoc.saveAs(
+    new File(stdFld, file.name),
+    new JPEGSaveOptions(),
+    true,
+    Extension.LOWERCASE
+  );
   stdDoc.close(SaveOptions.DONOTSAVECHANGES);
-
+  
   // 3) PREPARE ROTATED DOC
   app.activeDocument = rotDoc;            // ← ensure it’s frontmost
   var decalLayer = rotDoc.layers.getByName("decal");
@@ -85,15 +89,16 @@ function processFile(file, stdFld, rotFld) {
   addBasicShadow(8,7,7,21);
 
   // 3b) FLATTEN & SAVE ROTATED
-  app.activeDocument = rotDoc;            // ← ensure it’s frontmost
+  app.activeDocument = rotDoc;
   rotDoc.flatten();
-  var base    = file.name.replace(/\.[^\.]+$/,""),
-      newName = base.replace(/\d+$/,"103") + ".jpg",
-      outRot  = new File(rotFld, newName);
-  rotDoc.saveAs(outRot, new JPEGSaveOptions(), true);
+  rotDoc.saveAs(
+    new File(rotFld, newName),
+    new JPEGSaveOptions(),
+    true,
+    Extension.LOWERCASE
+  );
   rotDoc.close(SaveOptions.DONOTSAVECHANGES);
-}
-
+  
 function main(){
   var srcF = pickFolder("Select source folder"),
       outP = pickFolder("Select output parent folder"),

@@ -134,18 +134,26 @@ function processFile(file, stdFolder, rotFolder) {
 function main() {
     var srcFld = selectFolder("Select source folder of decals");
     var outFld = selectFolder("Select parent output folder");
+
     var std = new Folder(outFld + "/Standard");
     if (!std.exists) std.create();
+
     var rot = new Folder(outFld + "/Rotated");
     if (!rot.exists) rot.create();
-    
+
     var imgs = srcFld.getFiles(/\.(jpg|jpeg|png|psd)$/i);
+
+    // loop through each image
     for (var i = 0; i < imgs.length; i++) {
-      processFile(imgs[i], std, rot);
-    } catch (e) {
-        alert("Error on " + imgs[i].name + "\n" + e);
-      }
+        try {
+            // process this file
+            processFile(imgs[i], std, rot);
+        } catch (e) {
+            // report and continue
+            alert("Error processing " + imgs[i].name + ":\n" + e);
+        }
     }
+
     alert("All done!");
 }
 

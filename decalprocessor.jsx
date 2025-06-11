@@ -107,7 +107,12 @@ function processFile(file, stdFld, rotFld) {
   stdDoc.activeLayer.name = "decal";
   resizeActiveLayer(1520, 1520);
   centerActiveLayer();
-  addDropShadow();
+  addManualShadow(
+  /* maxBlur    */ 8, 
+  /* offsetX    */ 7, 
+  /* offsetY    */ 7, 
+  /* opacity %  */ 21
+);
   stdDoc.flatten();
 
   var jpgOpts = new JPEGSaveOptions(); jpgOpts.quality = 12;
@@ -120,7 +125,12 @@ function processFile(file, stdFld, rotFld) {
   app.activeDocument = rotDoc;
   rotDoc.activeLayer.rotate(30, AnchorPosition.MIDDLECENTER);
   centerActiveLayer();            // re-center after rotation
-  addDropShadow();                // same shadow
+  addManualShadow(
+  /* maxBlur    */ 8, 
+  /* offsetX    */ 7, 
+  /* offsetY    */ 7, 
+  /* opacity %  */ 21
+);
   rotDoc.flatten();
 
   // rename sequence ⇒ 103

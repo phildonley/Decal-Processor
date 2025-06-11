@@ -47,33 +47,47 @@ function addBasicShadow(blurRadius, offsetX, offsetY, opacityPct) {
   doc.activeLayer = decal;
 }
 
-function processOne(inPath, stdFld, rotFld) {
-  // open & copy
-  var doc = open(File(inPath));
-  doc.selection.selectAll(); doc.selection.copy();
-  doc.close(SaveOptions.DONOTSAVECHANGES);
+function processFile(file, stdFld, rotFld) {
+  // 1) OPEN & COPY
+  var src = open(file);
+  src.selection.selectAll();
+  src.selection.copy();
+  src.close(SaveOptions.DONOTSAVECHANGES);
 
-  // Standard
+  // 2) MAKE STANDARD DOC
   var stdDoc = app.documents.add(1600,1600,72,"Std",NewDocumentMode.RGB,DocumentFill.WHITE);
-  stdDoc.paste(); stdDoc.activeLayer.name = "decal";
-  resizeLayer(1520,1520); centerLayer();
-  addBasicShadow(8,7,7,21);
-  stdDoc.flatten();
-  var jpg = new JPEGSaveOptions(); jpg.quality = 12;
-  var outStd = stdFld + "/" + (new File(inPath)).name;
-  stdDoc.saveAs(File(outStd), jpg, true);
-  stdDoc.close(SaveOptions.DONOTSAVECHANGES);
-
-  // Rotated
-  var rotDoc = open(File(outStd));
-  rotDoc.activeLayer.rotate(30,AnchorPosition.MIDDLECENTER);
+  stdDoc.paste();
+  stdDoc.activeLayer.name = "decal";
+  resizeLayer(1520,1520);
   centerLayer();
   addBasicShadow(8,7,7,21);
+
+  // 2a) DUPLICATE FOR ROTATION (while layers still live)
+  var rotDoc = stdDoc.duplicate("RotCanvas");
+
+  // 2b) FLATTEN & SAVE STANDARD
+  stdDoc.flatten();
+  var outStd = new File(stdFld, file.name);
+  stdDoc.saveAs(outStd, new JPEGSaveOptions(), true);
+  stdDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+  // 3) PREPARE ROTATED DOC
+  app.activeDocument = rotDoc;
+  // find the decal layer by name (it’s still an art layer!)
+  var decalLayer = rotDoc.layers.getByName("decal");
+  rotDoc.activeLayer = decalLayer;
+
+  // 3a) ROTATE & RE-SHADOW
+  decalLayer.rotate(30, AnchorPosition.MIDDLECENTER);
+  centerLayer();
+  addBasicShadow(8,7,7,21);
+
+  // 3b) FLATTEN & SAVE ROTATED
   rotDoc.flatten();
-  var base    = (new File(inPath)).name.replace(/\.[^\.]+$/,""),
+  var base    = file.name.replace(/\.[^\.]+$/,""),
       newName = base.replace(/\d+$/,"103") + ".jpg",
-      outRot  = rotFld + "/" + newName;
-  rotDoc.saveAs(File(outRot), jpg, true);
+      outRot  = new File(rotFld, newName);
+  rotDoc.saveAs(outRot, new JPEGSaveOptions(), true);
   rotDoc.close(SaveOptions.DONOTSAVECHANGES);
 }
 

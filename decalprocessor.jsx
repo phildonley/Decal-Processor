@@ -72,41 +72,41 @@ function simplePerspectiveLeft(doc) {
 
 // Process one file
 function processFile(file, stdFolder, rotFolder) {
-    //--- open source
+    // open source
     var src = open(file);
     app.activeDocument = src;
 
-    //--- copy entire canvas
+    // copy entire canvas
     src.selection.selectAll();
     src.selection.copy();
     src.close(SaveOptions.DONOTSAVECHANGES);
 
-    //--- build a new 1600×1600 white canvas
+    // build a new 1600×1600 white canvas
     var stdDoc = app.documents.add(1600, 1600, 72, "StdCanvas", NewDocumentMode.RGB, DocumentFill.WHITE);
 
-    //--- paste decal as its own layer
+    // paste decal as its own layer
     stdDoc.paste();
     stdDoc.activeLayer.name = "decal";
     resizeActiveLayer(1520, 1520);
 
-    //--- drop-shadow & export Standard
+    // drop-shadow & export Standard
     addDropShadowToCurrentLayer();
     stdDoc.flatten();
+
+    // **use the two-arg File constructor here:**
+    var stdFile = new File(stdFolder, file.name);
     var jpgOpts = new JPEGSaveOptions();
-    jpgOpts.quality = 12;
-    var stdFile = new File(stdFolder + "/" + file.name);
+        jpgOpts.quality = 12;
     stdDoc.saveAs(stdFile, jpgOpts, true);
 
-    //--- create Rotated copy
-    var rotDoc = stdDoc.duplicate();
-    rotDoc.flatten(); // ensure we have a background + decal merged
-    // we’ll re-paste decal to re-enable layer effects:
-    app.activeDocument = rotDoc;
-    rotDoc.flatten(); // flattened doc for cleanup
-    rotDoc.selection.selectAll();
-    rotDoc.selection.copy();
-    rotDoc.selection.deselect();
-    rotDoc.close(SaveOptions.DONOTSAVECHANGES);
+    // create Rotated copy (we’ll rebuild decal layer fresh)
+    stdDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+    // reopen the standard we just saved, so we can re-paste for rotation
+    var reopened = open(stdFile);
+    reopened.selection.selectAll();
+    reopened.selection.copy();
+    reopened.close(SaveOptions.DONOTSAVECHANGES);
 
     // new canvas for rotation
     var rDoc = app.documents.add(1600, 1600, 72, "RotCanvas", NewDocumentMode.RGB, DocumentFill.WHITE);
@@ -120,9 +120,11 @@ function processFile(file, stdFolder, rotFolder) {
     rDoc.flatten();
 
     // rename sequence to 103
-    var nameNoExt = file.name.replace(/\.[^.]+$/, "");
-    var newName = nameNoExt.replace(/\d+$/, "103") + ".jpg";
-    var rotFile = new File(rotFolder + "/" + newName);
+    var base = file.name.replace(/\.[^\.]+$/, "");
+    var newName = base.replace(/\d+$/, "103") + ".jpg";
+
+    // **and here too:**
+    var rotFile = new File(rotFolder, newName);
     rDoc.saveAs(rotFile, jpgOpts, true);
 
     // close
@@ -136,12 +138,11 @@ function main() {
     if (!std.exists) std.create();
     var rot = new Folder(outFld + "/Rotated");
     if (!rot.exists) rot.create();
-
+    
     var imgs = srcFld.getFiles(/\.(jpg|jpeg|png|psd)$/i);
     for (var i = 0; i < imgs.length; i++) {
-      try {
-        processFile(imgs[i], std.fsName, rot.fsName);
-      } catch (e) {
+      processFile(imgs[i], std, rot);
+    } catch (e) {
         alert("Error on " + imgs[i].name + "\n" + e);
       }
     }

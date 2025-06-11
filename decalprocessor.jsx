@@ -5,10 +5,21 @@ var CANVAS_SIZE = 1600;
 var MAX_IMAGE_SIZE = 1520;
 var SUPPORTED_FORMATS = /\.(jpg|jpeg|png|psd|tiff|tif|bmp)$/i;
 
-// Improved logging with timestamp
+// ExtendScript-compatible logging with timestamp
 function log(msg) {
-    var timestamp = new Date().toISOString();
+    var now = new Date();
+    var timestamp = now.getFullYear() + "-" + 
+                   padZero(now.getMonth() + 1) + "-" + 
+                   padZero(now.getDate()) + " " +
+                   padZero(now.getHours()) + ":" + 
+                   padZero(now.getMinutes()) + ":" + 
+                   padZero(now.getSeconds());
     $.writeln("[" + timestamp + "] " + msg);
+}
+
+// Helper function for date formatting
+function padZero(num) {
+    return (num < 10) ? "0" + num : num.toString();
 }
 
 // Enhanced error handling wrapper

@@ -65,71 +65,37 @@ function getImageFiles(folder) {
 }
 
 // Simplified drop shadow that works reliably
-function addDropShadow() {
-    return safeExecute(function() {
-        // Ensure we have a valid document and layer
-        if (!app.activeDocument) {
-            throw new Error("No active document");
-        }
-        
-        var activeLayer = app.activeDocument.activeLayer;
-        if (!activeLayer) {
-            throw new Error("No active layer");
-        }
-        
-        // Make sure layer is not background and is a normal layer
-        if (activeLayer.isBackgroundLayer) {
-            activeLayer.isBackgroundLayer = false;
-        }
-        
-        // Check if layer already has effects
-        try {
-            // Clear any existing layer effects first
-            var clearDesc = new ActionDescriptor();
-            var clearRef = new ActionReference();
-            clearRef.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
-            clearRef.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-            clearDesc.putReference(charIDToTypeID("null"), clearRef);
-            clearDesc.putObject(charIDToTypeID("T   "), charIDToTypeID("Lefx"), new ActionDescriptor());
-            executeAction(charIDToTypeID("setd"), clearDesc, DialogModes.NO);
-        } catch (e) {
-            // Ignore error if no effects to clear
-        }
-        
-        // Apply drop shadow
-        var desc = new ActionDescriptor();
-        var ref = new ActionReference();
-        ref.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
-        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-        desc.putReference(charIDToTypeID("null"), ref);
-        
-        var layerEffectsDesc = new ActionDescriptor();
-        layerEffectsDesc.putUnitDouble(charIDToTypeID("Scl "), charIDToTypeID("#Prc"), 100.0);
-        
-        var dropShadowDesc = new ActionDescriptor();
-        dropShadowDesc.putBoolean(charIDToTypeID("enab"), true);
-        dropShadowDesc.putBoolean(charIDToTypeID("present"), true);
-        dropShadowDesc.putBoolean(charIDToTypeID("showInDialog"), true);
-        dropShadowDesc.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
-        dropShadowDesc.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), 21.0);
-        dropShadowDesc.putUnitDouble(charIDToTypeID("Angl"), charIDToTypeID("#Ang"), 45.0);
-        dropShadowDesc.putBoolean(charIDToTypeID("useGlobalAngle"), true);
-        dropShadowDesc.putUnitDouble(charIDToTypeID("Dstn"), charIDToTypeID("#Pxl"), 7.0);
-        dropShadowDesc.putUnitDouble(charIDToTypeID("Ckmt"), charIDToTypeID("#Pxl"), 8.0);
-        dropShadowDesc.putUnitDouble(charIDToTypeID("Sprd"), charIDToTypeID("#Prc"), 14.0);
-        
-        var colorDesc = new ActionDescriptor();
-        colorDesc.putDouble(charIDToTypeID("Rd  "), 0.0);
-        colorDesc.putDouble(charIDToTypeID("Grn "), 0.0);
-        colorDesc.putDouble(charIDToTypeID("Bl  "), 0.0);
-        dropShadowDesc.putObject(charIDToTypeID("Clr "), charIDToTypeID("RGBC"), colorDesc);
-        
-        layerEffectsDesc.putObject(charIDToTypeID("DrSh"), charIDToTypeID("DrSh"), dropShadowDesc);
-        desc.putObject(charIDToTypeID("T   "), charIDToTypeID("Lefx"), layerEffectsDesc);
-        
-        executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
-        
-    }, "Failed to apply drop shadow");
+function addDropShadow(layer) {
+    // Ensure we have a valid document and layer
+    if (!app.documents.length) throw new Error("No open document");
+    if (!layer)           throw new Error("No layer to shadow");
+
+    var doc = app.activeDocument;
+    doc.activeLayer = layer;
+
+    // Rasterize/unlock if needed
+    if (layer.kind === LayerKind.SMARTOBJECT) 
+        layer.rasterize(RasterizeType.ENTIRELAYER);
+    if (layer.isBackgroundLayer) 
+        layer.isBackgroundLayer = false;
+
+    // Clear any existing effects
+    try {
+        layer.clearEffects(); // UXP bridge command; if unavailable, ignore
+    } catch(_) {}
+
+    // Apply drop shadow style
+    layer.layerStyle = LayerStyle.DROP_SHADOW;
+    var ds = layer.layerStyle.dropShadow;
+
+    ds.enabled         = true;
+    ds.mode            = ShadowMode.NORMAL;
+    ds.opacity         = 21;
+    ds.useGlobalAngle  = true;
+    ds.angle           = 45;
+    ds.distance        = 7;
+    ds.spread          = 14;
+    ds.size            = 8;
 }
 
 // Enhanced resize and center with better validation

@@ -1,11 +1,10 @@
 #target photoshop
 app.bringToFront();
 
-// pick a folder
 function pickFolder(msg) {
   var f = Folder.selectDialog(msg);
-  if (!f) throw "Cancel";
-  return f.fsName;
+  if (!f) throw "User cancelled";
+  return f;  
 }
 
 // resize active layer to fit within maxW×maxH
@@ -91,17 +90,22 @@ function processFile(file, stdFld, rotFld) {
   rotDoc.close(SaveOptions.DONOTSAVECHANGES);
 }
 
-function main() {
-  var src  = pickFolder("Select source folder"),
-      out  = pickFolder("Select output parent folder"),
-      stdF = out + "/Standard",
-      rotF = out + "/Rotated";
-  new Folder(stdF).create();
-  new Folder(rotF).create();
-  var list = Folder(src).getFiles(/\.(jpg|jpeg|png|psd)$/i);
-  for (var i=0; i<list.length; i++) {
-    try { processOne(list[i].fsName, stdF, rotF); }
-    catch(e) { alert("Error on "+list[i].name+"\n"+e); }
+function main(){
+  var srcF = pickFolder("Select source folder"),
+      outP = pickFolder("Select output parent folder"),
+      stdF = new Folder(outP.fsName + "/Standard"),
+      rotF = new Folder(outP.fsName + "/Rotated");
+
+  if (!stdF.exists) stdF.create();
+  if (!rotF.exists) rotF.create();
+
+  var list = srcF.getFiles(/\.(jpg|jpeg|png|psd)$/i);
+  for(var i=0; i<list.length; i++){
+    try {
+      processFile(list[i], stdF, rotF);
+    } catch(e){
+      alert("Error on " + list[i].name + "\n" + e);
+    }
   }
   alert("All done!");
 }

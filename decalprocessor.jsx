@@ -1,24 +1,25 @@
 #target photoshop
 app.bringToFront();
+app.displayDialogs = DialogModes.NO;
+
+//—— Helpers ——//
 
 function pickFolder(msg) {
   var f = Folder.selectDialog(msg);
   if (!f) throw "User cancelled";
-  return f;  
+  return f;
 }
 
-// resize active layer to fit within maxW×maxH
 function resizeLayer(maxW, maxH) {
   var doc = app.activeDocument,
       lyr = doc.activeLayer,
       b   = lyr.bounds,
       w   = b[2].as("px") - b[0].as("px"),
       h   = b[3].as("px") - b[1].as("px"),
-      p   = Math.min(maxW/w, maxH/h)*100;
+      p   = Math.min(maxW/w, maxH/h) * 100;
   lyr.resize(p, p, AnchorPosition.MIDDLECENTER);
 }
 
-// center active layer in canvas
 function centerLayer() {
   var doc = app.activeDocument,
       lyr = doc.activeLayer,
@@ -32,7 +33,6 @@ function centerLayer() {
   lyr.translate(dx, dy);
 }
 
-// simplified shadow: duplicate, blur, multiply, offset
 function addBasicShadow(blurRadius, offsetX, offsetY, opacityPct) {
   var doc   = app.activeDocument,
       decal = doc.activeLayer,
@@ -46,60 +46,62 @@ function addBasicShadow(blurRadius, offsetX, offsetY, opacityPct) {
   doc.activeLayer = decal;
 }
 
+//—— Main per-file routine ——//
+
 function processFile(file, stdFld, rotFld) {
-  // 1) OPEN & COPY
+  // 1) open & copy
   var src = open(file);
   app.activeDocument = src;
   src.selection.selectAll();
   src.selection.copy();
   src.close(SaveOptions.DONOTSAVECHANGES);
 
-  // 2) MAKE STANDARD DOC
+  // 2) build STANDARD doc
   var stdDoc = app.documents.add(1600,1600,72,"Std",NewDocumentMode.RGB,DocumentFill.WHITE);
-  app.activeDocument = stdDoc;            // ← ensure it’s frontmost
+  app.activeDocument = stdDoc;
   stdDoc.paste();
   stdDoc.activeLayer.name = "decal";
   resizeLayer(1520,1520);
   centerLayer();
   addBasicShadow(8,7,7,21);
 
-  // 2a) DUPLICATE FOR ROTATION
-  app.activeDocument = stdDoc;            // ← ensure it’s frontmost
+  // 2a) duplicate for rotation
+  app.activeDocument = stdDoc;
   var rotDoc = stdDoc.duplicate("RotCanvas");
 
-  // 2b) FLATTEN & SAVE STANDARD
+  // 2b) flatten & save STANDARD
   app.activeDocument = stdDoc;
   stdDoc.flatten();
-  stdDoc.saveAs(
-    new File(stdFld, file.name),
-    new JPEGSaveOptions(),
-    true,
-    Extension.LOWERCASE
-  );
+  var outStd = new File(stdFld, file.name);
+  stdDoc.saveAs(outStd, new JPEGSaveOptions(), true, Extension.LOWERCASE);
   stdDoc.close(SaveOptions.DONOTSAVECHANGES);
-  
-  // 3) PREPARE ROTATED DOC
-  app.activeDocument = rotDoc;            // ← ensure it’s frontmost
+
+  // 3) prepare ROTATED doc
+  app.activeDocument = rotDoc;
   var decalLayer = rotDoc.layers.getByName("decal");
   rotDoc.activeLayer = decalLayer;
 
-  // 3a) ROTATE & RE-SHADOW
+  // 3a) rotate & re-shadow
   decalLayer.rotate(30, AnchorPosition.MIDDLECENTER);
   centerLayer();
   addBasicShadow(8,7,7,21);
 
-  // 3b) FLATTEN & SAVE ROTATED
+  // 3b) flatten & save ROTATED
   app.activeDocument = rotDoc;
   rotDoc.flatten();
-  rotDoc.saveAs(
-    new File(rotFld, newName),
-    new JPEGSaveOptions(),
-    true,
-    Extension.LOWERCASE
-  );
+
+  // compute new filename with sequence 103
+  var base    = file.name.replace(/\.[^\.]+$/, ""),
+      newName = base.replace(/\d+$/, "103") + ".jpg";
+
+  var outRot  = new File(rotFld, newName);
+  rotDoc.saveAs(outRot, new JPEGSaveOptions(), true, Extension.LOWERCASE);
   rotDoc.close(SaveOptions.DONOTSAVECHANGES);
-  
-function main(){
+} // ← here is the missing closing brace
+
+//—— Driver ——//
+
+function main() {
   var srcF = pickFolder("Select source folder"),
       outP = pickFolder("Select output parent folder"),
       stdF = new Folder(outP.fsName + "/Standard"),
@@ -109,10 +111,10 @@ function main(){
   if (!rotF.exists) rotF.create();
 
   var list = srcF.getFiles(/\.(jpg|jpeg|png|psd)$/i);
-  for(var i=0; i<list.length; i++){
+  for (var i = 0; i < list.length; i++) {
     try {
       processFile(list[i], stdF, rotF);
-    } catch(e){
+    } catch (e) {
       alert("Error on " + list[i].name + "\n" + e);
     }
   }

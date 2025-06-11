@@ -66,36 +66,53 @@ function getImageFiles(folder) {
 
 // Simplified drop shadow that works reliably
 function addDropShadow(layer) {
-    // Ensure we have a valid document and layer
+    // Preconditions
     if (!app.documents.length) throw new Error("No open document");
     if (!layer)           throw new Error("No layer to shadow");
 
     var doc = app.activeDocument;
     doc.activeLayer = layer;
 
-    // Rasterize/unlock if needed
-    if (layer.kind === LayerKind.SMARTOBJECT) 
-        layer.rasterize(RasterizeType.ENTIRELAYER);
-    if (layer.isBackgroundLayer) 
-        layer.isBackgroundLayer = false;
+    // Unlock/rasterize if needed
+    if (layer.kind === LayerKind.SMARTOBJECT) layer.rasterize(RasterizeType.ENTIRELAYER);
+    if (layer.isBackgroundLayer)      layer.isBackgroundLayer = false;
 
-    // Clear any existing effects
-    try {
-        layer.clearEffects(); // UXP bridge command; if unavailable, ignore
-    } catch(_) {}
+    // Build descriptor to set layerEffects.dropShadow
+    var idsetd = charIDToTypeID("setd");
+    var desc1  = new ActionDescriptor();
+    var ref1   = new ActionReference();
+    ref1.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
+    ref1.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    desc1.putReference(charIDToTypeID("null"), ref1);
 
-    // Apply drop shadow style
-    layer.layerStyle = LayerStyle.DROP_SHADOW;
-    var ds = layer.layerStyle.dropShadow;
+    var fxDesc = new ActionDescriptor();
+    fxDesc.putUnitDouble(charIDToTypeID("Scl "), charIDToTypeID("#Prc"), 100.0);
 
-    ds.enabled         = true;
-    ds.mode            = ShadowMode.NORMAL;
-    ds.opacity         = 21;
-    ds.useGlobalAngle  = true;
-    ds.angle           = 45;
-    ds.distance        = 7;
-    ds.spread          = 14;
-    ds.size            = 8;
+    var dsDesc = new ActionDescriptor();
+    dsDesc.putBoolean( charIDToTypeID("enab"),           true);
+    dsDesc.putBoolean( charIDToTypeID("present"),        true);
+    dsDesc.putBoolean( charIDToTypeID("showInDialog"),   true);
+    dsDesc.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
+    dsDesc.putUnitDouble( charIDToTypeID("Opct"),        charIDToTypeID("#Prc"), 21.0);
+    dsDesc.putUnitDouble( charIDToTypeID("Angl"),        charIDToTypeID("#Ang"), 45.0);
+    dsDesc.putBoolean( charIDToTypeID("useGlobalAngle"), true);
+    dsDesc.putUnitDouble( charIDToTypeID("Dstn"),        charIDToTypeID("#Pxl"),  7.0);
+    dsDesc.putUnitDouble( charIDToTypeID("Ckmt"),        charIDToTypeID("#Prc"), 14.0);  // spread/choke
+    dsDesc.putUnitDouble( charIDToTypeID("blur"),        charIDToTypeID("#Pxl"),  8.0); // size
+
+    // Color
+    var clrDesc = new ActionDescriptor();
+    clrDesc.putDouble(charIDToTypeID("Rd  "), 0.0);
+    clrDesc.putDouble(charIDToTypeID("Grn "), 0.0);
+    clrDesc.putDouble(charIDToTypeID("Bl  "), 0.0);
+    dsDesc.putObject(charIDToTypeID("Clr "), charIDToTypeID("RGBC"), clrDesc);
+
+    // Assemble
+    fxDesc.putObject(charIDToTypeID("DrSh"), charIDToTypeID("DrSh"), dsDesc);
+    desc1.putObject(charIDToTypeID("T   "), charIDToTypeID("Lefx"), fxDesc);
+
+    // Execute
+    executeAction(idsetd, desc1, DialogModes.NO);
 }
 
 // Enhanced resize and center with better validation

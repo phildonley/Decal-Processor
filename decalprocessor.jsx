@@ -6,7 +6,7 @@ app.displayDialogs = DialogModes.NO;
 
 function pickFolder(msg) {
   var f = Folder.selectDialog(msg);
-  if (!f) throw "User cancelled";
+  if (!f) throw "User cancelled.";
   return f;
 }
 
@@ -33,71 +33,69 @@ function centerLayer() {
   lyr.translate(dx, dy);
 }
 
-function addBasicShadow(blurRadius, offsetX, offsetY, opacityPct) {
+function addBasicShadow(blur, offX, offY, opa) {
   var doc   = app.activeDocument,
       decal = doc.activeLayer,
       shad  = decal.duplicate();
   shad.name      = "shadow";
-  try { shad.applyGaussianBlur(blurRadius); } catch(e){}
+  try { shad.applyGaussianBlur(blur); } catch(e){}
   shad.blendMode = BlendMode.MULTIPLY;
-  shad.opacity   = opacityPct;
+  shad.opacity   = opa;
   shad.move(decal, ElementPlacement.PLACEBEFORE);
-  shad.translate(offsetX, offsetY);
+  shad.translate(offX, offY);
   doc.activeLayer = decal;
 }
 
-//—— Main per-file routine ——//
+//—— Per‐file routine ——//
 
 function processFile(file, stdFld, rotFld) {
-  // 1) open & copy
+  // 1) OPEN & COPY
   var src = open(file);
   app.activeDocument = src;
-  src.selection.selectAll();
-  src.selection.copy();
+  src.selection.selectAll(); src.selection.copy();
   src.close(SaveOptions.DONOTSAVECHANGES);
 
-  // 2) build STANDARD doc
+  // 2) BUILD STANDARD DOC
   var stdDoc = app.documents.add(1600,1600,72,"Std",NewDocumentMode.RGB,DocumentFill.WHITE);
   app.activeDocument = stdDoc;
-  stdDoc.paste();
-  stdDoc.activeLayer.name = "decal";
-  resizeLayer(1520,1520);
-  centerLayer();
+  stdDoc.paste(); stdDoc.activeLayer.name = "decal";
+  resizeLayer(1520,1520); centerLayer();
   addBasicShadow(8,7,7,21);
 
-  // 2a) duplicate for rotation
+  // 2a) DUPLICATE FOR ROTATION
   app.activeDocument = stdDoc;
   var rotDoc = stdDoc.duplicate("RotCanvas");
 
-  // 2b) flatten & save STANDARD
+  // 2b) FLATTEN & SAVE STANDARD
   app.activeDocument = stdDoc;
   stdDoc.flatten();
-  var outStd = new File(stdFld, file.name);
-  stdDoc.saveAs(outStd, new JPEGSaveOptions(), true, Extension.LOWERCASE);
+
+  var outStd = new File(stdFld.fsName + "/" + file.name);
+  alert("Saving Standard to:\n" + outStd.fsName);
+  stdDoc.saveAs(outStd, new JPEGSaveOptions(), true);
   stdDoc.close(SaveOptions.DONOTSAVECHANGES);
 
-  // 3) prepare ROTATED doc
+  // 3) PREPARE ROTATED DOC
   app.activeDocument = rotDoc;
   var decalLayer = rotDoc.layers.getByName("decal");
   rotDoc.activeLayer = decalLayer;
 
-  // 3a) rotate & re-shadow
+  // 3a) ROTATE & RE-SHADOW
   decalLayer.rotate(30, AnchorPosition.MIDDLECENTER);
   centerLayer();
   addBasicShadow(8,7,7,21);
 
-  // 3b) flatten & save ROTATED
+  // 3b) FLATTEN & SAVE ROTATED
   app.activeDocument = rotDoc;
   rotDoc.flatten();
 
-  // compute new filename with sequence 103
-  var base    = file.name.replace(/\.[^\.]+$/, ""),
-      newName = base.replace(/\d+$/, "103") + ".jpg";
-
-  var outRot  = new File(rotFld, newName);
-  rotDoc.saveAs(outRot, new JPEGSaveOptions(), true, Extension.LOWERCASE);
+  var base    = file.name.replace(/\.[^\.]+$/,""),
+      newName = base.replace(/\d+$/,"103") + ".jpg",
+      outRot  = new File(rotFld.fsName + "/" + newName);
+  alert("Saving Rotated to:\n" + outRot.fsName);
+  rotDoc.saveAs(outRot, new JPEGSaveOptions(), true);
   rotDoc.close(SaveOptions.DONOTSAVECHANGES);
-} // ← here is the missing closing brace
+}
 
 //—— Driver ——//
 
@@ -115,10 +113,10 @@ function main() {
     try {
       processFile(list[i], stdF, rotF);
     } catch (e) {
-      alert("Error on " + list[i].name + "\n" + e);
+      alert("Error on " + list[i].name + ":\n" + e);
     }
   }
-  alert("All done!");
+  alert("✅ All done!");
 }
 
 main();

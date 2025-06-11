@@ -3,158 +3,119 @@ app.bringToFront();
 
 //–– Helpers ––//
 
-// Prompt user to pick a folder
-function selectFolder(promptText) {
-    var f = Folder.selectDialog(promptText);
-    if (!f) { throw "No folder selected."; }
-    return f;
+// Prompt for a folder
+function selectFolder(msg) {
+  var f = Folder.selectDialog(msg);
+  if (!f) throw "No folder selected.";
+  return f;
 }
 
-// Apply your exact drop-shadow settings via Action Manager
-function addDropShadowToCurrentLayer() {
-    var desc = new ActionDescriptor();
-    var ref = new ActionReference();
-        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-    desc.putReference(charIDToTypeID("null"), ref);
+// Drop shadow via Action Manager
+function addDropShadow() {
+  var desc = new ActionDescriptor(),
+      ref  = new ActionReference();
+  ref.putEnumerated( charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt") );
+  desc.putReference( charIDToTypeID("null"), ref );
 
-    var effectDesc = new ActionDescriptor();
-        effectDesc.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), 21);
-        effectDesc.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
-        effectDesc.putUnitDouble(charIDToTypeID("lagl"), charIDToTypeID("#Ang"), 45);
-        effectDesc.putBoolean(charIDToTypeID("uglg"), true); // use global light
-        effectDesc.putUnitDouble(charIDToTypeID("Dstn"), charIDToTypeID("#Pxl"), 7);
-        effectDesc.putUnitDouble(charIDToTypeID("Ckmt"), charIDToTypeID("#Prc"), 14); // spread (“Choke”)
-        effectDesc.putUnitDouble(charIDToTypeID("blur"), charIDToTypeID("#Pxl"), 8);
+  var fx = new ActionDescriptor();
+  fx.putUnitDouble   ( charIDToTypeID("Opct"), charIDToTypeID("#Prc"), 21 );
+  fx.putEnumerated   ( charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml") );
+  fx.putUnitDouble   ( charIDToTypeID("lagl"), charIDToTypeID("#Ang"), 45 );
+  fx.putBoolean      ( charIDToTypeID("uglg"), true );
+  fx.putUnitDouble   ( charIDToTypeID("Dstn"), charIDToTypeID("#Pxl"), 7 );
+  fx.putUnitDouble   ( charIDToTypeID("Ckmt"), charIDToTypeID("#Prc"), 14 );
+  fx.putUnitDouble   ( charIDToTypeID("blur"), charIDToTypeID("#Pxl"), 8 );
 
-    var list = new ActionList();
-        list.putObject(charIDToTypeID("DrSh"), effectDesc);
-    desc.putList(charIDToTypeID("Lefx"), list);
+  var list = new ActionList();
+  list.putObject( charIDToTypeID("DrSh"), fx );
+  desc.putList( charIDToTypeID("Lefx"), list );
 
-    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+  executeAction( charIDToTypeID("setd"), desc, DialogModes.NO );
 }
 
-// Resize the **active** layer to fit within maxW×maxH (proportional)
+// Proportional resize of the **active** layer to fit inside maxW×maxH
 function resizeActiveLayer(maxW, maxH) {
-    var layer = app.activeDocument.activeLayer;
-    var b = layer.bounds;
-    var w = b[2].as("px") - b[0].as("px");
-    var h = b[3].as("px") - b[1].as("px");
-    var scale = Math.min(maxW / w, maxH / h);
-    layer.resize(scale * 100, scale * 100, AnchorPosition.MIDDLECENTER);
+  var doc   = app.activeDocument,
+      lyr   = doc.activeLayer,
+      b     = lyr.bounds,
+      w     = b[2].as("px") - b[0].as("px"),
+      h     = b[3].as("px") - b[1].as("px"),
+      scale = Math.min(maxW / w, maxH / h) * 100;
+  lyr.resize(scale, scale, AnchorPosition.MIDDLECENTER);
 }
 
-// Simulate a simple perspective warp (placeholder—you can refine later)
-function simplePerspectiveLeft(doc) {
-    // This uses the “Free Transform” with corner offsets to fake a 30° turn:
-    var idTrnf = charIDToTypeID("Trnf");
-    var desc = new ActionDescriptor();
-      var idnull = charIDToTypeID("null");
-      var ref = new ActionReference();
-        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-      desc.putReference(idnull, ref);
-      desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa")); 
-      // New corner coordinates:
-      var quad = new ActionList();
-      function pt(x,y){ 
-        var p = new ActionDescriptor();
-        p.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Prc"), x);
-        p.putUnitDouble(charIDToTypeID("Vrtc"), charIDToTypeID("#Prc"), y);
-        quad.putObject(charIDToTypeID("Pnt "), p);
-      }
-      // 4 corners (percent-values): top-left, top-right, bottom-right, bottom-left
-      pt(10,0);   // pull TL in
-      pt(100,10); // push TR out
-      pt(90,100); // push BR out
-      pt(0,90);   // pull BL in
-      desc.putList(charIDToTypeID("Ofst"), quad);
-    executeAction(idTrnf, desc, DialogModes.NO);
+// Center the **active** layer in the canvas
+function centerActiveLayer() {
+  var doc = app.activeDocument,
+      lyr = doc.activeLayer,
+      b   = lyr.bounds,
+      lw  = b[2].as("px") - b[0].as("px"),
+      lh  = b[3].as("px") - b[1].as("px"),
+      dw  = doc.width.as("px"),
+      dh  = doc.height.as("px"),
+      dx  = (dw - lw)/2 - b[0].as("px"),
+      dy  = (dh - lh)/2 - b[1].as("px");
+  lyr.translate(dx, dy);
 }
 
 // Process one file
-function processFile(file, stdFolder, rotFolder) {
-    // open source
-    var src = open(file);
-    app.activeDocument = src;
+function processFile(file, stdFld, rotFld) {
+  // 1) OPEN & COPY
+  var src = open(file);
+  app.activeDocument = src;
+  src.selection.selectAll();
+  src.selection.copy();
+  src.close(SaveOptions.DONOTSAVECHANGES);
 
-    // copy entire canvas
-    src.selection.selectAll();
-    src.selection.copy();
-    src.close(SaveOptions.DONOTSAVECHANGES);
+  // 2) STANDARD IMAGE
+  var stdDoc = app.documents.add(1600, 1600, 72, "Std", NewDocumentMode.RGB, DocumentFill.WHITE);
+  stdDoc.paste();
+  stdDoc.activeLayer.name = "decal";
+  resizeActiveLayer(1520, 1520);
+  centerActiveLayer();
+  addDropShadow();
+  stdDoc.flatten();
 
-    // build a new 1600×1600 white canvas
-    var stdDoc = app.documents.add(1600, 1600, 72, "StdCanvas", NewDocumentMode.RGB, DocumentFill.WHITE);
+  var jpgOpts = new JPEGSaveOptions(); jpgOpts.quality = 12;
+  var outStd  = new File(stdFld, file.name);
+  stdDoc.saveAs(outStd, jpgOpts, true);
+  stdDoc.close(SaveOptions.DONOTSAVECHANGES);
 
-    // paste decal as its own layer
-    stdDoc.paste();
-    stdDoc.activeLayer.name = "decal";
-    resizeActiveLayer(1520, 1520);
+  // 3) ROTATED IMAGE (2D)
+  var rotDoc = open(outStd);
+  app.activeDocument = rotDoc;
+  rotDoc.activeLayer.rotate(30, AnchorPosition.MIDDLECENTER);
+  centerActiveLayer();            // re-center after rotation
+  addDropShadow();                // same shadow
+  rotDoc.flatten();
 
-    // drop-shadow & export Standard
-    addDropShadowToCurrentLayer();
-    stdDoc.flatten();
-
-    // **use the two-arg File constructor here:**
-    var stdFile = new File(stdFolder, file.name);
-    var jpgOpts = new JPEGSaveOptions();
-        jpgOpts.quality = 12;
-    stdDoc.saveAs(stdFile, jpgOpts, true);
-
-    // create Rotated copy (we’ll rebuild decal layer fresh)
-    stdDoc.close(SaveOptions.DONOTSAVECHANGES);
-
-    // reopen the standard we just saved, so we can re-paste for rotation
-    var reopened = open(stdFile);
-    reopened.selection.selectAll();
-    reopened.selection.copy();
-    reopened.close(SaveOptions.DONOTSAVECHANGES);
-
-    // new canvas for rotation
-    var rDoc = app.documents.add(1600, 1600, 72, "RotCanvas", NewDocumentMode.RGB, DocumentFill.WHITE);
-    rDoc.paste();
-    rDoc.activeLayer.name = "decal";
-    resizeActiveLayer(1520, 1520);
-
-    // apply fake perspective + shadow
-    simplePerspectiveLeft(rDoc);
-    addDropShadowToCurrentLayer();
-    rDoc.flatten();
-
-    // rename sequence to 103
-    var base = file.name.replace(/\.[^\.]+$/, "");
-    var newName = base.replace(/\d+$/, "103") + ".jpg";
-
-    // **and here too:**
-    var rotFile = new File(rotFolder, newName);
-    rDoc.saveAs(rotFile, jpgOpts, true);
-
-    // close
-    rDoc.close(SaveOptions.DONOTSAVECHANGES);
+  // rename sequence ⇒ 103
+  var base    = file.name.replace(/\.[^\.]+$/, ""),
+      newName = base.replace(/\d+$/, "103") + ".jpg",
+      outRot  = new File(rotFld, newName);
+  rotDoc.saveAs(outRot, jpgOpts, true);
+  rotDoc.close(SaveOptions.DONOTSAVECHANGES);
 }
 
+//–– Main ––//
 function main() {
-    var srcFld = selectFolder("Select source folder of decals");
-    var outFld = selectFolder("Select parent output folder");
+  var srcFld = selectFolder("Select source folder of decals"),
+      outFld = selectFolder("Select parent output folder");
 
-    var std = new Folder(outFld + "/Standard");
-    if (!std.exists) std.create();
+  var std = new Folder(outFld + "/Standard");
+  if (!std.exists) std.create();
+  var rot = new Folder(outFld + "/Rotated");
+  if (!rot.exists) rot.create();
 
-    var rot = new Folder(outFld + "/Rotated");
-    if (!rot.exists) rot.create();
-
-    var imgs = srcFld.getFiles(/\.(jpg|jpeg|png|psd)$/i);
-
-    // loop through each image
-    for (var i = 0; i < imgs.length; i++) {
-        try {
-            // process this file
-            processFile(imgs[i], std, rot);
-        } catch (e) {
-            // report and continue
-            alert("Error processing " + imgs[i].name + ":\n" + e);
-        }
+  var imgs = srcFld.getFiles(/\.(jpg|jpeg|png|psd)$/i);
+  for (var i = 0; i < imgs.length; i++) {
+    try {
+      processFile(imgs[i], std, rot);
+    } catch (e) {
+      alert("Error on " + imgs[i].name + ":\n" + e);
     }
-
-    alert("All done!");
+  }
+  alert("All done!");
 }
 
 main();

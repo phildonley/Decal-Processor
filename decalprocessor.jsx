@@ -49,30 +49,33 @@ function addBasicShadow(blurRadius, offsetX, offsetY, opacityPct) {
 function processFile(file, stdFld, rotFld) {
   // 1) OPEN & COPY
   var src = open(file);
+  app.activeDocument = src;
   src.selection.selectAll();
   src.selection.copy();
   src.close(SaveOptions.DONOTSAVECHANGES);
 
   // 2) MAKE STANDARD DOC
   var stdDoc = app.documents.add(1600,1600,72,"Std",NewDocumentMode.RGB,DocumentFill.WHITE);
+  app.activeDocument = stdDoc;            // ← ensure it’s frontmost
   stdDoc.paste();
   stdDoc.activeLayer.name = "decal";
   resizeLayer(1520,1520);
   centerLayer();
   addBasicShadow(8,7,7,21);
 
-  // 2a) DUPLICATE FOR ROTATION (while layers still live)
+  // 2a) DUPLICATE FOR ROTATION
+  app.activeDocument = stdDoc;            // ← ensure it’s frontmost
   var rotDoc = stdDoc.duplicate("RotCanvas");
 
   // 2b) FLATTEN & SAVE STANDARD
+  app.activeDocument = stdDoc;            // ← ensure it’s frontmost
   stdDoc.flatten();
   var outStd = new File(stdFld, file.name);
   stdDoc.saveAs(outStd, new JPEGSaveOptions(), true);
   stdDoc.close(SaveOptions.DONOTSAVECHANGES);
 
   // 3) PREPARE ROTATED DOC
-  app.activeDocument = rotDoc;
-  // find the decal layer by name (it’s still an art layer!)
+  app.activeDocument = rotDoc;            // ← ensure it’s frontmost
   var decalLayer = rotDoc.layers.getByName("decal");
   rotDoc.activeLayer = decalLayer;
 
@@ -82,6 +85,7 @@ function processFile(file, stdFld, rotFld) {
   addBasicShadow(8,7,7,21);
 
   // 3b) FLATTEN & SAVE ROTATED
+  app.activeDocument = rotDoc;            // ← ensure it’s frontmost
   rotDoc.flatten();
   var base    = file.name.replace(/\.[^\.]+$/,""),
       newName = base.replace(/\d+$/,"103") + ".jpg",

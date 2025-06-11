@@ -64,20 +64,41 @@ function getImageFiles(folder) {
     }, "Failed to gather image files");
 }
 
-// Modern drop shadow with improved error handling
-function addDropShadow(targetLayer) {
+// Simplified drop shadow that works reliably
+function addDropShadow() {
     return safeExecute(function() {
-        // Ensure we have a valid target
-        if (!app.activeDocument || !targetLayer) {
-            throw new Error("No valid target for drop shadow");
+        // Ensure we have a valid document and layer
+        if (!app.activeDocument) {
+            throw new Error("No active document");
         }
         
-        // Make sure target layer is selected
-        app.activeDocument.activeLayer = targetLayer;
+        var activeLayer = app.activeDocument.activeLayer;
+        if (!activeLayer) {
+            throw new Error("No active layer");
+        }
         
+        // Make sure layer is not background and is a normal layer
+        if (activeLayer.isBackgroundLayer) {
+            activeLayer.isBackgroundLayer = false;
+        }
+        
+        // Check if layer already has effects
+        try {
+            // Clear any existing layer effects first
+            var clearDesc = new ActionDescriptor();
+            var clearRef = new ActionReference();
+            clearRef.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
+            clearRef.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+            clearDesc.putReference(charIDToTypeID("null"), clearRef);
+            clearDesc.putObject(charIDToTypeID("T   "), charIDToTypeID("Lefx"), new ActionDescriptor());
+            executeAction(charIDToTypeID("setd"), clearDesc, DialogModes.NO);
+        } catch (e) {
+            // Ignore error if no effects to clear
+        }
+        
+        // Apply drop shadow
         var desc = new ActionDescriptor();
         var ref = new ActionReference();
-        
         ref.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
         ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
         desc.putReference(charIDToTypeID("null"), ref);
@@ -118,6 +139,9 @@ function resizeAndCenterLayer(doc, layer, maxWidth, maxHeight) {
         if (!doc || !layer) {
             throw new Error("Invalid document or layer");
         }
+        
+        // Make sure this layer is active
+        doc.activeLayer = layer;
         
         // Ensure layer is rasterized and not background
         if (layer.kind === LayerKind.SMARTOBJECT) {
@@ -262,10 +286,13 @@ function processImage(sourceFile, standardFolder, rotatedFolder) {
         app.activeDocument = canvas;
         canvas.activeLayer = duplicatedLayer;
         
+        // Resize and center first
         resizeAndCenterLayer(canvas, duplicatedLayer, MAX_IMAGE_SIZE, MAX_IMAGE_SIZE);
-        addDropShadow(duplicatedLayer);
         
-        // Flatten and save standard version
+        // Apply drop shadow BEFORE flattening
+        addDropShadow();
+        
+        // Now flatten and save standard version
         canvas.flatten();
         var standardFile = new File(standardFolder + "/" + sourceFile.name);
         var jpegOptions = new JPEGSaveOptions();
@@ -273,21 +300,41 @@ function processImage(sourceFile, standardFolder, rotatedFolder) {
         jpegOptions.embedColorProfile = true;
         canvas.saveAs(standardFile, jpegOptions, true, Extension.LOWERCASE);
         
-        // Create rotated version
-        rotatedCanvas = canvas.duplicate("Rotated_" + baseName);
-        app.activeDocument = rotatedCanvas;
+        // Create rotated version by duplicating the original canvas BEFORE flattening
+        // We need to go back and create a fresh copy
+        app.activeDocument = canvas;
+        canvas.close(SaveOptions.DONOTSAVECHANGES);
         
-        // Ensure we have a valid active layer
-        if (rotatedCanvas.layers.length > 0) {
-            rotatedCanvas.activeLayer = rotatedCanvas.layers[0];
-            
-            try {
-                applyLeftPerspectiveSkew(rotatedCanvas.activeLayer);
-                addDropShadow(rotatedCanvas.activeLayer);
-            } catch (perspectiveError) {
-                log("⚠️ Perspective skipped for " + sourceFile.name + ": " + perspectiveError.message);
-            }
+        // Reopen and process for rotated version
+        doc = app.open(sourceFile);
+        rotatedCanvas = app.documents.add(
+            CANVAS_SIZE, 
+            CANVAS_SIZE, 
+            72, 
+            "RotatedCanvas_" + baseName, 
+            NewDocumentMode.RGB, 
+            DocumentFill.WHITE
+        );
+        
+        app.activeDocument = doc;
+        var rotatedLayer = doc.activeLayer.duplicate(rotatedCanvas, ElementPlacement.PLACEATBEGINNING);
+        doc.close(SaveOptions.DONOTSAVECHANGES);
+        
+        app.activeDocument = rotatedCanvas;
+        rotatedCanvas.activeLayer = rotatedLayer;
+        
+        // Resize and center
+        resizeAndCenterLayer(rotatedCanvas, rotatedLayer, MAX_IMAGE_SIZE, MAX_IMAGE_SIZE);
+        
+        // Apply perspective transformation
+        try {
+            applyLeftPerspectiveSkew(rotatedLayer);
+        } catch (perspectiveError) {
+            log("⚠️ Perspective skipped for " + sourceFile.name + ": " + perspectiveError.message);
         }
+        
+        // Apply drop shadow BEFORE flattening
+        addDropShadow();
         
         // Flatten and save rotated version
         rotatedCanvas.flatten();

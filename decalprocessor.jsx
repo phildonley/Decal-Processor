@@ -58,6 +58,40 @@ function centerActiveLayer() {
   lyr.translate(dx, dy);
 }
 
+// Create a light, blurred, offset “shadow” from the current layer
+function addManualShadow(maxBlur, offsetX, offsetY, shadowOpacity){
+    var doc   = app.activeDocument,
+        decal = doc.activeLayer,
+        // duplicate the decal layer
+        shad  = decal.duplicate();
+    shad.name = "shadow";
+    
+    // fill the shadow layer with 50% gray
+    doc.activeLayer = shad;
+    var gray = new SolidColor();
+    gray.rgb.red   = 128;
+    gray.rgb.green = 128;
+    gray.rgb.blue  = 128;
+    shad.clear();                     // remove any layer style
+    shad.rasterize(RasterizeType.ENTIRELAYER);
+    doc.selection.selectAll();
+    doc.selection.fill(gray);
+    doc.selection.deselect();
+    
+    // blur it
+    shad.applyGaussianBlur(maxBlur);
+    
+    // lower opacity
+    shad.opacity = shadowOpacity;
+    
+    // move it behind and offset
+    shad.move(decal, ElementPlacement.PLACEBEFORE);
+    shad.translate(offsetX, offsetY);
+    
+    // put decal back on top
+    doc.activeLayer = decal;
+}
+
 // Process one file
 function processFile(file, stdFld, rotFld) {
   // 1) OPEN & COPY

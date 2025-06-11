@@ -1,405 +1,151 @@
 #target photoshop
+app.bringToFront();
 
-// Modern error handling and constants
-var CANVAS_SIZE = 1600;
-var MAX_IMAGE_SIZE = 1520;
-var SUPPORTED_FORMATS = /\.(jpg|jpeg|png|psd|tiff|tif|bmp)$/i;
+//–– Helpers ––//
 
-// ExtendScript-compatible logging with timestamp
-function log(msg) {
-    var now = new Date();
-    var timestamp = now.getFullYear() + "-" + 
-                   padZero(now.getMonth() + 1) + "-" + 
-                   padZero(now.getDate()) + " " +
-                   padZero(now.getHours()) + ":" + 
-                   padZero(now.getMinutes()) + ":" + 
-                   padZero(now.getSeconds());
-    $.writeln("[" + timestamp + "] " + msg);
-}
-
-// Helper function for date formatting
-function padZero(num) {
-    return (num < 10) ? "0" + num : num.toString();
-}
-
-// Enhanced error handling wrapper
-function safeExecute(func, errorMsg) {
-    try {
-        return func();
-    } catch (e) {
-        log("ERROR: " + errorMsg + " - " + e.message);
-        throw new Error(errorMsg + ": " + e.message);
-    }
-}
-
-// Modern folder selection with validation
+// Prompt user to pick a folder
 function selectFolder(promptText) {
-    return safeExecute(function() {
-        var folder = Folder.selectDialog(promptText);
-        if (!folder || !folder.exists) {
-            throw new Error("Invalid folder selection");
-        }
-        return folder;
-    }, "Folder selection failed");
+    var f = Folder.selectDialog(promptText);
+    if (!f) { throw "No folder selected."; }
+    return f;
 }
 
-// Enhanced file gathering with better validation
-function getImageFiles(folder) {
-    return safeExecute(function() {
-        var allFiles = folder.getFiles();
-        var imageFiles = [];
-        
-        for (var i = 0; i < allFiles.length; i++) {
-            var file = allFiles[i];
-            if (file instanceof File && file.exists) {
-                var fileName = file.name.toLowerCase();
-                if (SUPPORTED_FORMATS.test(fileName)) {
-                    imageFiles.push(file);
-                }
-            }
-        }
-        
-        log("Found " + imageFiles.length + " valid image file(s)");
-        return imageFiles;
-    }, "Failed to gather image files");
-}
-
-// Simplified drop shadow that works reliably
-function addDropShadow(layer) {
-    // Preconditions
-    if (!app.documents.length) throw new Error("No open document");
-    if (!layer)           throw new Error("No layer to shadow");
-
-    var doc = app.activeDocument;
-    doc.activeLayer = layer;
-
-    // Unlock/rasterize if needed
-    if (layer.kind === LayerKind.SMARTOBJECT) layer.rasterize(RasterizeType.ENTIRELAYER);
-    if (layer.isBackgroundLayer)      layer.isBackgroundLayer = false;
-
-    // Build descriptor to set layerEffects.dropShadow
-    var idsetd = charIDToTypeID("setd");
-    var desc1  = new ActionDescriptor();
-    var ref1   = new ActionReference();
-    ref1.putProperty(charIDToTypeID("Prpr"), charIDToTypeID("Lefx"));
-    ref1.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-    desc1.putReference(charIDToTypeID("null"), ref1);
-
-    var fxDesc = new ActionDescriptor();
-    fxDesc.putUnitDouble(charIDToTypeID("Scl "), charIDToTypeID("#Prc"), 100.0);
-
-    var dsDesc = new ActionDescriptor();
-    dsDesc.putBoolean( charIDToTypeID("enab"),           true);
-    dsDesc.putBoolean( charIDToTypeID("present"),        true);
-    dsDesc.putBoolean( charIDToTypeID("showInDialog"),   true);
-    dsDesc.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
-    dsDesc.putUnitDouble( charIDToTypeID("Opct"),        charIDToTypeID("#Prc"), 21.0);
-    dsDesc.putUnitDouble( charIDToTypeID("Angl"),        charIDToTypeID("#Ang"), 45.0);
-    dsDesc.putBoolean( charIDToTypeID("useGlobalAngle"), true);
-    dsDesc.putUnitDouble( charIDToTypeID("Dstn"),        charIDToTypeID("#Pxl"),  7.0);
-    dsDesc.putUnitDouble( charIDToTypeID("Ckmt"),        charIDToTypeID("#Prc"), 14.0);  // spread/choke
-    dsDesc.putUnitDouble( charIDToTypeID("blur"),        charIDToTypeID("#Pxl"),  8.0); // size
-
-    // Color
-    var clrDesc = new ActionDescriptor();
-    clrDesc.putDouble(charIDToTypeID("Rd  "), 0.0);
-    clrDesc.putDouble(charIDToTypeID("Grn "), 0.0);
-    clrDesc.putDouble(charIDToTypeID("Bl  "), 0.0);
-    dsDesc.putObject(charIDToTypeID("Clr "), charIDToTypeID("RGBC"), clrDesc);
-
-    // Assemble
-    fxDesc.putObject(charIDToTypeID("DrSh"), charIDToTypeID("DrSh"), dsDesc);
-    desc1.putObject(charIDToTypeID("T   "), charIDToTypeID("Lefx"), fxDesc);
-
-    // Execute
-    executeAction(idsetd, desc1, DialogModes.NO);
-}
-
-// Enhanced resize and center with better validation
-function resizeAndCenterLayer(doc, layer, maxWidth, maxHeight) {
-    return safeExecute(function() {
-        // Validate inputs
-        if (!doc || !layer) {
-            throw new Error("Invalid document or layer");
-        }
-        
-        // Make sure this layer is active
-        doc.activeLayer = layer;
-        
-        // Ensure layer is rasterized and not background
-        if (layer.kind === LayerKind.SMARTOBJECT) {
-            layer.rasterize(RasterizeType.ENTIRELAYER);
-        }
-        if (layer.isBackgroundLayer) {
-            layer.isBackgroundLayer = false;
-        }
-        
-        // Get current bounds
-        var bounds = layer.bounds;
-        var currentWidth = bounds[2].as("px") - bounds[0].as("px");
-        var currentHeight = bounds[3].as("px") - bounds[1].as("px");
-        
-        // Validate dimensions
-        if (currentWidth <= 0 || currentHeight <= 0) {
-            throw new Error("Invalid layer dimensions: " + currentWidth + "×" + currentHeight);
-        }
-        
-        // Calculate scale factor
-        var scaleX = maxWidth / currentWidth;
-        var scaleY = maxHeight / currentHeight;
-        var scale = Math.min(scaleX, scaleY);
-        
-        // Apply resize
-        if (scale !== 1.0) {
-            layer.resize(scale * 100, scale * 100, AnchorPosition.MIDDLECENTER);
-        }
-        
-        // Center the layer
-        var newBounds = layer.bounds;
-        var newWidth = newBounds[2].as("px") - newBounds[0].as("px");
-        var newHeight = newBounds[3].as("px") - newBounds[1].as("px");
-        
-        var docCenterX = doc.width.as("px") / 2;
-        var docCenterY = doc.height.as("px") / 2;
-        var layerCenterX = newBounds[0].as("px") + newWidth / 2;
-        var layerCenterY = newBounds[1].as("px") + newHeight / 2;
-        
-        var deltaX = docCenterX - layerCenterX;
-        var deltaY = docCenterY - layerCenterY;
-        
-        if (deltaX !== 0 || deltaY !== 0) {
-            layer.translate(deltaX, deltaY);
-        }
-        
-        return layer;
-        
-    }, "Failed to resize and center layer");
-}
-
-// Modern perspective distortion with improved validation
-function applyLeftPerspectiveSkew(layer) {
-    return safeExecute(function() {
-        if (!layer || !app.activeDocument) {
-            throw new Error("Invalid layer or document for perspective");
-        }
-        
-        app.activeDocument.activeLayer = layer;
-        
-        if (layer.isBackgroundLayer) {
-            layer.isBackgroundLayer = false;
-        }
-        
-        var bounds = layer.bounds;
-        var left = bounds[0].as("px");
-        var top = bounds[1].as("px");
-        var right = bounds[2].as("px");
-        var bottom = bounds[3].as("px");
-        
-        var width = right - left;
-        var height = bottom - top;
-        var perspectiveOffset = width * 0.3;
-        
-        // Create perspective transformation
-        var desc = new ActionDescriptor();
-        var ref = new ActionReference();
+// Apply your exact drop-shadow settings via Action Manager
+function addDropShadowToCurrentLayer() {
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
         ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-        desc.putReference(charIDToTypeID("null"), ref);
-        desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa"));
-        
-        var cornersList = new ActionList();
-        
-        // Helper function for corner points
-        function createPoint(x, y) {
-            var pointDesc = new ActionDescriptor();
-            pointDesc.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Pxl"), x);
-            pointDesc.putUnitDouble(charIDToTypeID("Vrtc"), charIDToTypeID("#Pxl"), y);
-            return pointDesc;
-        }
-        
-        // Define corner points for left perspective
-        cornersList.putObject(charIDToTypeID("Pnt "), createPoint(left + perspectiveOffset, top));
-        cornersList.putObject(charIDToTypeID("Pnt "), createPoint(right, top - perspectiveOffset));
-        cornersList.putObject(charIDToTypeID("Pnt "), createPoint(right, bottom + perspectiveOffset));
-        cornersList.putObject(charIDToTypeID("Pnt "), createPoint(left + perspectiveOffset, bottom));
-        
-        desc.putList(charIDToTypeID("Quad"), cornersList);
-        executeAction(charIDToTypeID("Trnf"), desc, DialogModes.NO);
-        
-        return layer;
-        
-    }, "Failed to apply perspective transformation");
+    desc.putReference(charIDToTypeID("null"), ref);
+
+    var effectDesc = new ActionDescriptor();
+        effectDesc.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), 21);
+        effectDesc.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
+        effectDesc.putUnitDouble(charIDToTypeID("lagl"), charIDToTypeID("#Ang"), 45);
+        effectDesc.putBoolean(charIDToTypeID("uglg"), true); // use global light
+        effectDesc.putUnitDouble(charIDToTypeID("Dstn"), charIDToTypeID("#Pxl"), 7);
+        effectDesc.putUnitDouble(charIDToTypeID("Ckmt"), charIDToTypeID("#Prc"), 14); // spread (“Choke”)
+        effectDesc.putUnitDouble(charIDToTypeID("blur"), charIDToTypeID("#Pxl"), 8);
+
+    var list = new ActionList();
+        list.putObject(charIDToTypeID("DrSh"), effectDesc);
+    desc.putList(charIDToTypeID("Lefx"), list);
+
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
 }
 
-// Enhanced image processing with better state management
-function processImage(sourceFile, standardFolder, rotatedFolder) {
-    var doc = null;
-    var canvas = null;
-    var rotatedCanvas = null;
-    
-    try {
-        log("Processing: " + sourceFile.name);
-        var baseName = sourceFile.name.replace(/\.[^.]+$/, "");
-        
-        // Open source document
-        doc = app.open(sourceFile);
-        if (!doc) {
-            throw new Error("Failed to open source file");
-        }
-        
-        // Create canvas
-        canvas = app.documents.add(
-            CANVAS_SIZE, 
-            CANVAS_SIZE, 
-            72, 
-            "Canvas_" + baseName, 
-            NewDocumentMode.RGB, 
-            DocumentFill.WHITE
-        );
-        
-        // Duplicate source layer to canvas
-        app.activeDocument = doc;
-        var sourceLayer = doc.activeLayer;
-        var duplicatedLayer = sourceLayer.duplicate(canvas, ElementPlacement.PLACEATBEGINNING);
-        
-        // Close source document
-        doc.close(SaveOptions.DONOTSAVECHANGES);
-        doc = null;
-        
-        // Process standard version
-        app.activeDocument = canvas;
-        canvas.activeLayer = duplicatedLayer;
-        
-        // Resize and center first
-        resizeAndCenterLayer(canvas, duplicatedLayer, MAX_IMAGE_SIZE, MAX_IMAGE_SIZE);
-        
-        // Apply drop shadow BEFORE flattening
-        addDropShadow(canvas.activeLayer);
-        
-        // Now flatten and save standard version
-        canvas.flatten();
-        var standardFile = new File(standardFolder + "/" + sourceFile.name);
-        var jpegOptions = new JPEGSaveOptions();
-        jpegOptions.quality = 12;
-        jpegOptions.embedColorProfile = true;
-        canvas.saveAs(standardFile, jpegOptions, true, Extension.LOWERCASE);
-        
-        // Create rotated version by duplicating the original canvas BEFORE flattening
-        // We need to go back and create a fresh copy
-        app.activeDocument = canvas;
-        canvas.close(SaveOptions.DONOTSAVECHANGES);
-        
-        // Reopen and process for rotated version
-        doc = app.open(sourceFile);
-        rotatedCanvas = app.documents.add(
-            CANVAS_SIZE, 
-            CANVAS_SIZE, 
-            72, 
-            "RotatedCanvas_" + baseName, 
-            NewDocumentMode.RGB, 
-            DocumentFill.WHITE
-        );
-        
-        app.activeDocument = doc;
-        var rotatedLayer = doc.activeLayer.duplicate(rotatedCanvas, ElementPlacement.PLACEATBEGINNING);
-        doc.close(SaveOptions.DONOTSAVECHANGES);
-        
-        app.activeDocument = rotatedCanvas;
-        rotatedCanvas.activeLayer = rotatedLayer;
-        
-        // Resize and center
-        resizeAndCenterLayer(rotatedCanvas, rotatedLayer, MAX_IMAGE_SIZE, MAX_IMAGE_SIZE);
-        
-        // Apply perspective transformation
-        try {
-            applyLeftPerspectiveSkew(rotatedLayer);
-        } catch (perspectiveError) {
-            log("⚠️ Perspective skipped for " + sourceFile.name + ": " + perspectiveError.message);
-        }
-        
-        // Apply drop shadow BEFORE flattening
-        addDropShadow(rotatedCanvas.activeLayer);
-        
-        // Flatten and save rotated version
-        rotatedCanvas.flatten();
-        var rotatedFile = new File(rotatedFolder + "/" + baseName + "103.jpg");
-        rotatedCanvas.saveAs(rotatedFile, jpegOptions, true, Extension.LOWERCASE);
-        
-        log("✅ Successfully processed: " + sourceFile.name);
-        
-    } catch (error) {
-        log("❌ Error processing " + sourceFile.name + ": " + error.message);
-        throw error;
-    } finally {
-        // Clean up documents
-        try {
-            if (doc) doc.close(SaveOptions.DONOTSAVECHANGES);
-            if (rotatedCanvas) rotatedCanvas.close(SaveOptions.DONOTSAVECHANGES);
-            if (canvas) canvas.close(SaveOptions.DONOTSAVECHANGES);
-        } catch (cleanupError) {
-            log("⚠️ Cleanup warning: " + cleanupError.message);
-        }
-    }
+// Resize the **active** layer to fit within maxW×maxH (proportional)
+function resizeActiveLayer(maxW, maxH) {
+    var layer = app.activeDocument.activeLayer;
+    var b = layer.bounds;
+    var w = b[2].as("px") - b[0].as("px");
+    var h = b[3].as("px") - b[1].as("px");
+    var scale = Math.min(maxW / w, maxH / h);
+    layer.resize(scale * 100, scale * 100, AnchorPosition.MIDDLECENTER);
 }
 
-// Enhanced main execution function
+// Simulate a simple perspective warp (placeholder—you can refine later)
+function simplePerspectiveLeft(doc) {
+    // This uses the “Free Transform” with corner offsets to fake a 30° turn:
+    var idTrnf = charIDToTypeID("Trnf");
+    var desc = new ActionDescriptor();
+      var idnull = charIDToTypeID("null");
+      var ref = new ActionReference();
+        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+      desc.putReference(idnull, ref);
+      desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa")); 
+      // New corner coordinates:
+      var quad = new ActionList();
+      function pt(x,y){ 
+        var p = new ActionDescriptor();
+        p.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Prc"), x);
+        p.putUnitDouble(charIDToTypeID("Vrtc"), charIDToTypeID("#Prc"), y);
+        quad.putObject(charIDToTypeID("Pnt "), p);
+      }
+      // 4 corners (percent-values): top-left, top-right, bottom-right, bottom-left
+      pt(10,0);   // pull TL in
+      pt(100,10); // push TR out
+      pt(90,100); // push BR out
+      pt(0,90);   // pull BL in
+      desc.putList(charIDToTypeID("Ofst"), quad);
+    executeAction(idTrnf, desc, DialogModes.NO);
+}
+
+// Process one file
+function processFile(file, stdFolder, rotFolder) {
+    //--- open source
+    var src = open(file);
+    app.activeDocument = src;
+
+    //--- copy entire canvas
+    src.selection.selectAll();
+    src.selection.copy();
+    src.close(SaveOptions.DONOTSAVECHANGES);
+
+    //--- build a new 1600×1600 white canvas
+    var stdDoc = app.documents.add(1600, 1600, 72, "StdCanvas", NewDocumentMode.RGB, DocumentFill.WHITE);
+
+    //--- paste decal as its own layer
+    stdDoc.paste();
+    stdDoc.activeLayer.name = "decal";
+    resizeActiveLayer(1520, 1520);
+
+    //--- drop-shadow & export Standard
+    addDropShadowToCurrentLayer();
+    stdDoc.flatten();
+    var jpgOpts = new JPEGSaveOptions();
+    jpgOpts.quality = 12;
+    var stdFile = new File(stdFolder + "/" + file.name);
+    stdDoc.saveAs(stdFile, jpgOpts, true);
+
+    //--- create Rotated copy
+    var rotDoc = stdDoc.duplicate();
+    rotDoc.flatten(); // ensure we have a background + decal merged
+    // we’ll re-paste decal to re-enable layer effects:
+    app.activeDocument = rotDoc;
+    rotDoc.flatten(); // flattened doc for cleanup
+    rotDoc.selection.selectAll();
+    rotDoc.selection.copy();
+    rotDoc.selection.deselect();
+    rotDoc.close(SaveOptions.DONOTSAVECHANGES);
+
+    // new canvas for rotation
+    var rDoc = app.documents.add(1600, 1600, 72, "RotCanvas", NewDocumentMode.RGB, DocumentFill.WHITE);
+    rDoc.paste();
+    rDoc.activeLayer.name = "decal";
+    resizeActiveLayer(1520, 1520);
+
+    // apply fake perspective + shadow
+    simplePerspectiveLeft(rDoc);
+    addDropShadowToCurrentLayer();
+    rDoc.flatten();
+
+    // rename sequence to 103
+    var nameNoExt = file.name.replace(/\.[^.]+$/, "");
+    var newName = nameNoExt.replace(/\d+$/, "103") + ".jpg";
+    var rotFile = new File(rotFolder + "/" + newName);
+    rDoc.saveAs(rotFile, jpgOpts, true);
+
+    // close
+    rDoc.close(SaveOptions.DONOTSAVECHANGES);
+}
+
 function main() {
-    try {
-        // Bring Photoshop to front
-        app.bringToFront();
-        
-        // Set up preferences for better performance
-        app.displayDialogs = DialogModes.ERROR;
-        var originalRulerUnits = app.preferences.rulerUnits;
-        app.preferences.rulerUnits = Units.PIXELS;
-        
-        log("=== Starting batch processing ===");
-        
-        // Get folders
-        var sourceFolder = selectFolder("Select folder containing decal images");
-        var outputFolder = selectFolder("Select output destination folder");
-        
-        // Create output subfolders
-        var standardFolder = new Folder(outputFolder.fsName + "/Standard");
-        var rotatedFolder = new Folder(outputFolder.fsName + "/Rotated");
-        
-        if (!standardFolder.exists) standardFolder.create();
-        if (!rotatedFolder.exists) rotatedFolder.create();
-        
-        // Process files
-        var imageFiles = getImageFiles(sourceFolder);
-        var processedCount = 0;
-        var errorCount = 0;
-        
-        for (var i = 0; i < imageFiles.length; i++) {
-            try {
-                processImage(imageFiles[i], standardFolder.fsName, rotatedFolder.fsName);
-                processedCount++;
-            } catch (processingError) {
-                errorCount++;
-                log("Failed to process " + imageFiles[i].name + ": " + processingError.message);
-            }
-        }
-        
-        // Restore preferences
-        app.preferences.rulerUnits = originalRulerUnits;
-        app.displayDialogs = DialogModes.ALL;
-        
-        // Final report
-        var summary = "=== Processing Complete ===\n" +
-                     "Total files: " + imageFiles.length + "\n" +
-                     "Successfully processed: " + processedCount + "\n" +
-                     "Errors: " + errorCount + "\n\n" +
-                     "Check the Standard and Rotated folders for results.";
-        
-        log(summary);
-        alert(summary);
-        
-    } catch (mainError) {
-        var errorMsg = "❌ Critical error: " + mainError.message;
-        log(errorMsg);
-        alert(errorMsg);
+    var srcFld = selectFolder("Select source folder of decals");
+    var outFld = selectFolder("Select parent output folder");
+    var std = new Folder(outFld + "/Standard");
+    if (!std.exists) std.create();
+    var rot = new Folder(outFld + "/Rotated");
+    if (!rot.exists) rot.create();
+
+    var imgs = srcFld.getFiles(/\.(jpg|jpeg|png|psd)$/i);
+    for (var i = 0; i < imgs.length; i++) {
+      try {
+        processFile(imgs[i], std.fsName, rot.fsName);
+      } catch (e) {
+        alert("Error on " + imgs[i].name + "\n" + e);
+      }
     }
+    alert("All done!");
 }
 
-// Execute main function
 main();

@@ -256,7 +256,7 @@ function processImage(sourceFile, standardFolder, rotatedFolder) {
         resizeAndCenterLayer(canvas, duplicatedLayer, MAX_IMAGE_SIZE, MAX_IMAGE_SIZE);
         
         // Apply drop shadow BEFORE flattening
-        addDropShadow();
+        addDropShadow(canvas.activeLayer);
         
         // Now flatten and save standard version
         canvas.flatten();
@@ -300,7 +300,7 @@ function processImage(sourceFile, standardFolder, rotatedFolder) {
         }
         
         // Apply drop shadow BEFORE flattening
-        addDropShadow();
+        addDropShadow(rotatedCanvas.activeLayer);
         
         // Flatten and save rotated version
         rotatedCanvas.flatten();

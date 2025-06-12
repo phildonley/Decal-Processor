@@ -1,29 +1,17 @@
 #target photoshop
 app.bringToFront();
 
-// ————— Utility Logging —————
+// Simple logger to the ExtendScript Console
 function log(msg) { $.writeln(msg); }
 
-// ————— Prompt for a folder —————
+// Prompt for a folder and verify
 function selectFolder(promptText) {
   var f = Folder.selectDialog(promptText);
   if (!f) throw new Error("No folder selected.");
   return f;
 }
 
-// ————— Collect all images in that folder —————
-function getImageFiles(folder) {
-  var all = folder.getFiles(), imgs = [];
-  for (var i = 0; i < all.length; i++) {
-    var f = all[i];
-    if (f instanceof File && f.name.match(/\\.(jpg|jpeg|png|psd)$/i)) {
-      imgs.push(f);
-    }
-  }
-  return imgs;
-}
-
-// ————— Add a subtle drop shadow via ActionDescriptor —————
+// Add the exact drop shadow you specified
 function addDropShadow() {
   var idsetd = charIDToTypeID("setd"),
       desc1  = new ActionDescriptor(),
@@ -58,7 +46,7 @@ function addDropShadow() {
   executeAction(idsetd, desc1, DialogModes.NO);
 }
 
-// ————— Resize & perfectly center the layer —————
+// Resize & center with padding
 function resizeAndCenterLayer(doc, layer, maxW, maxH) {
   if (layer.kind === LayerKind.SMARTOBJECT) layer.rasterize(RasterizeType.ENTIRELAYER);
   if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
@@ -79,7 +67,7 @@ function resizeAndCenterLayer(doc, layer, maxW, maxH) {
   layer.translate(dx, dy);
 }
 
-// ————— Corner helper for ActionDescriptor —————
+// Build a point for the quad list
 function pointDescriptor(x,y) {
   var d = new ActionDescriptor();
   d.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Pxl"), x);
@@ -87,20 +75,18 @@ function pointDescriptor(x,y) {
   return d;
 }
 
-// ————— True 30° yaw by corner distortion —————
+// True 30° perspective using corner distortion
 function applyLeftPerspectiveSkew(layer) {
   app.activeDocument.activeLayer = layer;
   if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
 
   var b  = layer.bounds,
       x1 = b[0].as("px"), y1 = b[1].as("px"),
-      x2 = b[2].as("px"), y2 = b[3].as("px");
-
-  // real 30° = π/6
-  var halfW  = (x2 - x1)/2,
-      cos30  = Math.cos(Math.PI/6),     // ~0.866
-      offL   = halfW * (1 - cos30),     // compress left
-      offR   = halfW * (1/cos30 - 1);   // expand right
+      x2 = b[2].as("px"), y2 = b[3].as("px"),
+      halfW = (x2 - x1)/2,
+      cos30 = Math.cos(Math.PI/6),      // ~0.866
+      offL =  halfW * (1 - cos30),
+      offR =  halfW * (1/cos30 - 1);
 
   var idTrnf = charIDToTypeID("Trnf"),
       desc   = new ActionDescriptor(),
@@ -110,20 +96,20 @@ function applyLeftPerspectiveSkew(layer) {
   desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa"));
 
   var quad = new ActionList();
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1+offL, y1)); // TL
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2+offR, y1)); // TR
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2+offR, y2)); // BR
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1+offL, y2)); // BL
+  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL, y1));
+  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR, y1));
+  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR, y2));
+  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL, y2));
   desc.putList(charIDToTypeID("Quad"), quad);
 
   executeAction(idTrnf, desc, DialogModes.NO);
 }
 
-// ————— Process a single file —————
+// Process each file
 function processImage(file, stdFS, rotFS) {
   log("▶ " + file.name);
-  var base   = file.name.replace(/\\.\\d+/, ""),
-      doc    = open(file),
+  var base = file.name.replace(/\\.\\d+/, ""),
+      doc  = open(file),
       canvas = app.documents.add(1600,1600,72,"Canvas",NewDocumentMode.RGB,DocumentFill.WHITE);
 
   app.activeDocument = doc;
@@ -152,29 +138,34 @@ function processImage(file, stdFS, rotFS) {
   canvas.close(SaveOptions.DONOTSAVECHANGES);
 }
 
-// ————— Entry Point —————
+// Entry point
 function run() {
   var src    = selectFolder("Select folder with decal images"),
       output = selectFolder("Select output location");
+
+  // Show exactly where we're looking
+  alert("Scanning: " + src.fsName);
+
+  // Grab all JPG/PNG/PSD in one go
+  var files = src.getFiles(/\.(jpg|jpeg|png|psd)$/i) || [];
+  alert("Found " + files.length + " image(s).");
+
+  if (!files.length) return;
 
   var stdDir = new Folder(output + "/Standard");
   if (!stdDir.exists) stdDir.create();
   var rotDir = new Folder(output + "/Rotated");
   if (!rotDir.exists) rotDir.create();
 
-  var imgs = getImageFiles(src);
-  alert("Found " + imgs.length + " image(s) to process.");
-  if (!imgs.length) return;
-
-  for (var i = 0; i < imgs.length; i++) {
+  for (var i = 0; i < files.length; i++) {
     try {
-      processImage(imgs[i], stdDir.fsName, rotDir.fsName);
+      processImage(files[i], stdDir.fsName, rotDir.fsName);
     } catch(e) {
-      alert("❌ Error on " + imgs[i].name + ":\n" + e.message);
+      alert("❌ Error on " + files[i].name + ":\n" + e.message);
     }
   }
 
-  alert("✅ Finished! Check Standard & Rotated folders.");
+  alert("✅ Done! Check ‘Standard’ & ‘Rotated’ folders.");
 }
 
 run();

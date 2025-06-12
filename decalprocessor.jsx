@@ -90,6 +90,7 @@ function processImage(file, stdFS, rotFS) {
 
 // ——— Resize + Center ———
 function resizeAndCenterLayer(doc, layer, maxW, maxH) {
+  try {
     if (layer.kind === LayerKind.SMARTOBJECT) 
         layer.rasterize(RasterizeType.ENTIRELAYER);
     if (layer.isBackgroundLayer)   
@@ -97,10 +98,10 @@ function resizeAndCenterLayer(doc, layer, maxW, maxH) {
 
     // grab the corners
     var b      = layer.bounds;
-    var left   = b[0].as("px");
-    var top    = b[1].as("px");
-    var right  = b[2].as("px");
-    var bottom = b[3].as("px");
+    var left   = b.as("px");
+    var top    = b.as("px");
+    var right  = b.as("px");
+    var bottom = b.as("px");
 
     var w = right - left;
     var h = bottom - top;
@@ -113,10 +114,10 @@ function resizeAndCenterLayer(doc, layer, maxW, maxH) {
 
     // re-read bounds after resize
     b      = layer.bounds;
-    left   = b[0].as("px");
-    top    = b[1].as("px");
-    right  = b[2].as("px");
-    bottom = b[3].as("px");
+    left   = b.as("px");
+    top    = b.as("px");
+    right  = b.as("px");
+    bottom = b.as("px");
 
     w = right - left;
     h = bottom - top;
@@ -125,9 +126,9 @@ function resizeAndCenterLayer(doc, layer, maxW, maxH) {
     var dx = (doc.width.as("px")  / 2) - (left + w/2);
     var dy = (doc.height.as("px") / 2) - (top  + h/2);
     layer.translate(dx, dy);
-}  
-} catch (e) {
+  } catch (e) {
     throw new Error("Failed during resize and center: " + e.message);
+  }
 }
 
 // ——— Drop Shadow ———

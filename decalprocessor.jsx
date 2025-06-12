@@ -63,7 +63,7 @@ function processImage(file, stdFolder, rotFolder) {
     // — Standard view —
     resizeAndCenterLayer(canvas, canvas.activeLayer, 1520, 1520);
     // run your recorded “Shadow” action:
-    app.doAction("Shadow", "YOUR_ACTION_SET_NAME");
+    app.doAction("Shadow", "Default Actions");
     canvas.flatten();
     canvas.saveAs(new File(stdFolder + "/" + file.name),
                   new JPEGSaveOptions(), /*asCopy*/ true, Extension.LOWERCASE);
@@ -73,7 +73,7 @@ function processImage(file, stdFolder, rotFolder) {
     app.activeDocument = rot;
     resizeAndCenterLayer(rot, rot.activeLayer, 1520, 1520);
     // run your recorded “Perspective” action:
-    app.doAction("Perspective", "YOUR_ACTION_SET_NAME");
+    app.doAction("Perspective", "Default Actions");
     // re-center in case the perspective action moved it
     resizeAndCenterLayer(rot, rot.activeLayer, 1520, 1520);
     rot.flatten();

@@ -140,41 +140,54 @@ function pointDescriptor(x,y) {
 function applyLeftPerspectiveSkew(layer) {
     app.activeDocument.activeLayer = layer;
     if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
+    layer.rasterize(RasterizeType.TRANSPARENT); // force pixel
 
-    // grab bounds
-    var b   = layer.bounds;
-    var x1  = b[0].as("px"), y1 = b[1].as("px");
-    var x2  = b[2].as("px"), y2 = b[3].as("px");
+    // 1) Read bounds
+    var b  = layer.bounds;
+    var x1 = b[0].as("px"), y1 = b[1].as("px");
+    var x2 = b[2].as("px"), y2 = b[3].as("px");
 
-    // compute a true 30° yaw: cos(30°)=0.866, tan(30°)=0.577
+    // 2) Compute 30° offsets
     var halfW = (x2 - x1) / 2;
-    var cos30 = Math.cos(Math.PI/6);     // ~0.866
-    var offL  = halfW * (1 - cos30);     // left side moves in
-    var offR  = halfW * (1/cos30 - 1);   // right side moves out
+    var cos30 = Math.cos(Math.PI/6);     
+    var offL  = halfW * (1 - cos30);
+    var offR  = halfW * (1/cos30 - 1);
 
-    // build the ActionDescriptor
+    // Debug: log all the values
+    log("⏺ Bounds → x1=" + x1 + " y1=" + y1 + " x2=" + x2 + " y2=" + y2);
+    log("⏺ Offsets → offL=" + offL + " offR=" + offR);
+
+    // 3) Build descriptor
     var desc  = new ActionDescriptor();
     var ref   = new ActionReference();
     ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
     desc.putReference(charIDToTypeID("null"), ref);
     desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa"));
 
-    // **This is the missing piece** — you MUST include an empty “Ofst” descriptor
+    // REQUIRED empty offset entry
     var od = new ActionDescriptor();
     od.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Pxl"), 0);
     od.putUnitDouble(charIDToTypeID("Vrtc"), charIDToTypeID("#Pxl"), 0);
     desc.putObject(charIDToTypeID("Ofst"), charIDToTypeID("Ofst"), od);
 
-    // now your four‐corner list
+    // 4) Quad corners
     var quad = new ActionList();
-    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL,   y1));
-    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR,   y1));
-    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR,   y2));
-    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL,   y2));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL, y1));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR, y1));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR, y2));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL, y2));
     desc.putList(charIDToTypeID("Quad"), quad);
 
-    // execute transform
-    executeAction(charIDToTypeID("Trnf"), desc, DialogModes.NO);
+    // Debug: dump entire descriptor
+    log("⏺ Transform descriptor:\n" + desc.toSource());
+
+    // 5) Execute and catch
+    try {
+      executeAction(charIDToTypeID("Trnf"), desc, DialogModes.NO);
+    } catch (err) {
+      log("❌ Transform failed: " + err.message);
+      throw err;  // re-throw so your outer loop alerts
+    }
 }
 
 run();

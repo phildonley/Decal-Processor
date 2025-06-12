@@ -1,17 +1,100 @@
 #target photoshop
 app.bringToFront();
 
-// Simple logger to the ExtendScript Console
 function log(msg) { $.writeln(msg); }
 
-// Prompt for a folder and verify
+// clamp helper
+function clamp(v, min, max) { return Math.min(Math.max(v, min), max); }
+
 function selectFolder(promptText) {
   var f = Folder.selectDialog(promptText);
   if (!f) throw new Error("No folder selected.");
   return f;
 }
 
-// Add the exact drop shadow you specified
+function run() {
+  // 1) pick source + output
+  var src    = selectFolder("Select folder with decals"),
+      output = selectFolder("Select output location");
+
+  // 2) gather files via Photoshop’s native filter
+  alert("Scanning: " + src.fsName);
+  var files = src.getFiles(/\.(jpg|jpeg|png|psd)$/i);
+  alert("Found " + files.length + " image(s).");
+  if (!files || !files.length) return;
+
+  // 3) prepare subfolders
+  var stdDir = new Folder(output + "/Standard"); if (!stdDir.exists) stdDir.create();
+  var rotDir = new Folder(output + "/Rotated");  if (!rotDir.exists) rotDir.create();
+
+  // 4) loop
+  for (var i = 0; i < files.length; i++) {
+    try {
+      processImage(files[i], stdDir.fsName, rotDir.fsName);
+    } catch (e) {
+      alert("Error on " + files[i].name + ":\n" + e.message);
+    }
+  }
+
+  alert("✅ Done! Check “Standard” & “Rotated”.");
+}
+
+// ——— per-file work ———
+function processImage(file, stdFS, rotFS) {
+  log("▶ " + file.name);
+  var base   = file.name.replace(/\.\d+/, ""),
+      doc    = open(file),
+      canvas = app.documents.add(1600, 1600, 72, "Canvas", NewDocumentMode.RGB, DocumentFill.WHITE);
+
+  // duplicate decal into canvas
+  app.activeDocument = doc;
+  doc.activeLayer.duplicate(canvas, ElementPlacement.PLACEATBEGINNING);
+  doc.close(SaveOptions.DONOTSAVECHANGES);
+  app.activeDocument = canvas;
+
+  // standard view
+  resizeAndCenterLayer(canvas, canvas.activeLayer, 1520, 1520);
+  addDropShadow();
+  canvas.flatten();
+  canvas.saveAs(new File(stdFS + "/" + file.name), new JPEGSaveOptions(), true, Extension.LOWERCASE);
+
+  // rotated view
+  var rot = canvas.duplicate();
+  app.activeDocument = rot;
+  try {
+    applyLeftPerspectiveSkew(rot.activeLayer);
+    addDropShadow();
+  } catch (e) {
+    log("⚠ Skew skipped: " + e.message);
+  }
+  rot.flatten();
+  rot.saveAs(new File(rotFS + "/" + base + "103.jpg"), new JPEGSaveOptions(), true, Extension.LOWERCASE);
+  rot.close(SaveOptions.DONOTSAVECHANGES);
+  canvas.close(SaveOptions.DONOTSAVECHANGES);
+}
+
+// ——— Resize + Center ———
+function resizeAndCenterLayer(doc, layer, maxW, maxH) {
+  if (layer.kind === LayerKind.SMARTOBJECT) layer.rasterize(RasterizeType.ENTIRELAYER);
+  if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
+
+  var b = layer.bounds,
+      w = b[2].as("px") - b[0].as("px"),
+      h = b[3].as("px") - b[1].as("px");
+  if (w < 2 || h < 2) throw new Error("Too small: " + w + "×" + h);
+
+  var scale = Math.min(maxW / w, maxH / h);
+  layer.resize(scale * 100, scale * 100);
+
+  b = layer.bounds;
+  w = b[2].as("px") - b[0].as("px");
+  h = b[3].as("px") - b[1].as("px");
+  var dx = (doc.width.as("px") / 2) - (b[0].as("px") + w/2),
+      dy = (doc.height.as("px")/ 2) - (b[1].as("px") + h/2);
+  layer.translate(dx, dy);
+}
+
+// ——— Drop Shadow ———
 function addDropShadow() {
   var idsetd = charIDToTypeID("setd"),
       desc1  = new ActionDescriptor(),
@@ -46,28 +129,7 @@ function addDropShadow() {
   executeAction(idsetd, desc1, DialogModes.NO);
 }
 
-// Resize & center with padding
-function resizeAndCenterLayer(doc, layer, maxW, maxH) {
-  if (layer.kind === LayerKind.SMARTOBJECT) layer.rasterize(RasterizeType.ENTIRELAYER);
-  if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
-
-  var b = layer.bounds,
-      w = b[2].as("px") - b[0].as("px"),
-      h = b[3].as("px") - b[1].as("px");
-  if (w < 2 || h < 2) throw new Error("Layer too small: " + w + "×" + h);
-
-  var scale = Math.min(maxW / w, maxH / h);
-  layer.resize(scale * 100, scale * 100);
-
-  b = layer.bounds;
-  w = b[2].as("px") - b[0].as("px");
-  h = b[3].as("px") - b[1].as("px");
-  var dx = (doc.width.as("px") / 2) - (b[0].as("px") + w/2),
-      dy = (doc.height.as("px")/ 2) - (b[1].as("px") + h/2);
-  layer.translate(dx, dy);
-}
-
-// Build a point for the quad list
+// ——— Perspective Skew (30°) ———
 function pointDescriptor(x,y) {
   var d = new ActionDescriptor();
   d.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Pxl"), x);
@@ -75,18 +137,26 @@ function pointDescriptor(x,y) {
   return d;
 }
 
-// True 30° perspective using corner distortion
 function applyLeftPerspectiveSkew(layer) {
   app.activeDocument.activeLayer = layer;
   if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
 
-  var b  = layer.bounds,
-      x1 = b[0].as("px"), y1 = b[1].as("px"),
-      x2 = b[2].as("px"), y2 = b[3].as("px"),
+  var doc   = app.activeDocument,
+      b     = layer.bounds,
+      x1    = b[0].as("px"), y1 = b[1].as("px"),
+      x2    = b[2].as("px"), y2 = b[3].as("px"),
       halfW = (x2 - x1)/2,
-      cos30 = Math.cos(Math.PI/6),      // ~0.866
-      offL =  halfW * (1 - cos30),
-      offR =  halfW * (1/cos30 - 1);
+      cos30 = Math.cos(Math.PI/6),
+      offL  = halfW * (1 - cos30),
+      offR  = halfW * (1/cos30 - 1),
+      W     = doc.width.as("px"),
+      H     = doc.height.as("px");
+
+  // clamp each corner so it's never outside [0,W]×[0,H]
+  var TL = pointDescriptor(clamp(x1+offL,0,W), clamp(y1,0,H)),
+      TR = pointDescriptor(clamp(x2+offR,0,W), clamp(y1,0,H)),
+      BR = pointDescriptor(clamp(x2+offR,0,W), clamp(y2,0,H)),
+      BL = pointDescriptor(clamp(x1+offL,0,W), clamp(y2,0,H));
 
   var idTrnf = charIDToTypeID("Trnf"),
       desc   = new ActionDescriptor(),
@@ -96,76 +166,13 @@ function applyLeftPerspectiveSkew(layer) {
   desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa"));
 
   var quad = new ActionList();
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL, y1));
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR, y1));
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR, y2));
-  quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL, y2));
+  quad.putObject(charIDToTypeID("Pnt "), TL);
+  quad.putObject(charIDToTypeID("Pnt "), TR);
+  quad.putObject(charIDToTypeID("Pnt "), BR);
+  quad.putObject(charIDToTypeID("Pnt "), BL);
   desc.putList(charIDToTypeID("Quad"), quad);
 
   executeAction(idTrnf, desc, DialogModes.NO);
-}
-
-// Process each file
-function processImage(file, stdFS, rotFS) {
-  log("▶ " + file.name);
-  var base = file.name.replace(/\\.\\d+/, ""),
-      doc  = open(file),
-      canvas = app.documents.add(1600,1600,72,"Canvas",NewDocumentMode.RGB,DocumentFill.WHITE);
-
-  app.activeDocument = doc;
-  doc.activeLayer.duplicate(canvas, ElementPlacement.PLACEATBEGINNING);
-  doc.close(SaveOptions.DONOTSAVECHANGES);
-  app.activeDocument = canvas;
-
-  // Standard
-  resizeAndCenterLayer(canvas, canvas.activeLayer, 1520, 1520);
-  addDropShadow();
-  canvas.flatten();
-  canvas.saveAs(new File(stdFS + "/" + file.name), new JPEGSaveOptions(), true);
-
-  // Rotated
-  var rot = canvas.duplicate();
-  app.activeDocument = rot;
-  try {
-    applyLeftPerspectiveSkew(rot.activeLayer);
-    addDropShadow();
-  } catch(e) {
-    log("⚠ Skew skipped: " + e.message);
-  }
-  rot.flatten();
-  rot.saveAs(new File(rotFS + "/" + base + "103.jpg"), new JPEGSaveOptions(), true);
-  rot.close(SaveOptions.DONOTSAVECHANGES);
-  canvas.close(SaveOptions.DONOTSAVECHANGES);
-}
-
-// Entry point
-function run() {
-  var src    = selectFolder("Select folder with decal images"),
-      output = selectFolder("Select output location");
-
-  // Show exactly where we're looking
-  alert("Scanning: " + src.fsName);
-
-  // Grab all JPG/PNG/PSD in one go
-  var files = src.getFiles(/\.(jpg|jpeg|png|psd)$/i) || [];
-  alert("Found " + files.length + " image(s).");
-
-  if (!files.length) return;
-
-  var stdDir = new Folder(output + "/Standard");
-  if (!stdDir.exists) stdDir.create();
-  var rotDir = new Folder(output + "/Rotated");
-  if (!rotDir.exists) rotDir.create();
-
-  for (var i = 0; i < files.length; i++) {
-    try {
-      processImage(files[i], stdDir.fsName, rotDir.fsName);
-    } catch(e) {
-      alert("❌ Error on " + files[i].name + ":\n" + e.message);
-    }
-  }
-
-  alert("✅ Done! Check ‘Standard’ & ‘Rotated’ folders.");
 }
 
 run();

@@ -138,41 +138,43 @@ function pointDescriptor(x,y) {
 }
 
 function applyLeftPerspectiveSkew(layer) {
-  app.activeDocument.activeLayer = layer;
-  if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
+    app.activeDocument.activeLayer = layer;
+    if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
 
-  var doc   = app.activeDocument,
-      b     = layer.bounds,
-      x1    = b[0].as("px"), y1 = b[1].as("px"),
-      x2    = b[2].as("px"), y2 = b[3].as("px"),
-      halfW = (x2 - x1)/2,
-      cos30 = Math.cos(Math.PI/6),
-      offL  = halfW * (1 - cos30),
-      offR  = halfW * (1/cos30 - 1),
-      W     = doc.width.as("px"),
-      H     = doc.height.as("px");
+    // grab bounds
+    var b   = layer.bounds;
+    var x1  = b[0].as("px"), y1 = b[1].as("px");
+    var x2  = b[2].as("px"), y2 = b[3].as("px");
 
-  // clamp each corner so it's never outside [0,W]×[0,H]
-  var TL = pointDescriptor(clamp(x1+offL,0,W), clamp(y1,0,H)),
-      TR = pointDescriptor(clamp(x2+offR,0,W), clamp(y1,0,H)),
-      BR = pointDescriptor(clamp(x2+offR,0,W), clamp(y2,0,H)),
-      BL = pointDescriptor(clamp(x1+offL,0,W), clamp(y2,0,H));
+    // compute a true 30° yaw: cos(30°)=0.866, tan(30°)=0.577
+    var halfW = (x2 - x1) / 2;
+    var cos30 = Math.cos(Math.PI/6);     // ~0.866
+    var offL  = halfW * (1 - cos30);     // left side moves in
+    var offR  = halfW * (1/cos30 - 1);   // right side moves out
 
-  var idTrnf = charIDToTypeID("Trnf"),
-      desc   = new ActionDescriptor(),
-      ref    = new ActionReference();
-  ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
-  desc.putReference(charIDToTypeID("null"), ref);
-  desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa"));
+    // build the ActionDescriptor
+    var desc  = new ActionDescriptor();
+    var ref   = new ActionReference();
+    ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+    desc.putReference(charIDToTypeID("null"), ref);
+    desc.putEnumerated(charIDToTypeID("FTcs"), charIDToTypeID("QCSt"), charIDToTypeID("Qcsa"));
 
-  var quad = new ActionList();
-  quad.putObject(charIDToTypeID("Pnt "), TL);
-  quad.putObject(charIDToTypeID("Pnt "), TR);
-  quad.putObject(charIDToTypeID("Pnt "), BR);
-  quad.putObject(charIDToTypeID("Pnt "), BL);
-  desc.putList(charIDToTypeID("Quad"), quad);
+    // **This is the missing piece** — you MUST include an empty “Ofst” descriptor
+    var od = new ActionDescriptor();
+    od.putUnitDouble(charIDToTypeID("Hrzn"), charIDToTypeID("#Pxl"), 0);
+    od.putUnitDouble(charIDToTypeID("Vrtc"), charIDToTypeID("#Pxl"), 0);
+    desc.putObject(charIDToTypeID("Ofst"), charIDToTypeID("Ofst"), od);
 
-  executeAction(idTrnf, desc, DialogModes.NO);
+    // now your four‐corner list
+    var quad = new ActionList();
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL,   y1));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR,   y1));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x2 + offR,   y2));
+    quad.putObject(charIDToTypeID("Pnt "), pointDescriptor(x1 + offL,   y2));
+    desc.putList(charIDToTypeID("Quad"), quad);
+
+    // execute transform
+    executeAction(charIDToTypeID("Trnf"), desc, DialogModes.NO);
 }
 
 run();

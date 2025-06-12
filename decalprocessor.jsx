@@ -87,28 +87,37 @@ function processRotated(file, rotFS) {
 
 /** Entry point */
 function run() {
-    var src    = selectFolder("Select folder with decal images"),
-        output = selectFolder("Select output location");
+  // 1) pick source + parent output
+  var src    = selectFolder("Select folder with decal images"),
+      parent = selectFolder("Select output location");
 
-    var files = src.getFiles(/\.(jpe?g|png|psd)$/i);
-    alert("Found " + files.length + " image(s).");
-    if (!files.length) return;
+  // 2) build a timestamped subfolder: Decals-MMDDYYYY-HHMM
+  var now = new Date();
+  function pad(n){ return (n<10?"0":"") + n; }
+  var name = "Decals-" +
+             pad(now.getMonth()+1) +
+             pad(now.getDate()) +
+             now.getFullYear() + "-" +
+             pad(now.getHours()) +
+             pad(now.getMinutes());
+  var outFolder = new Folder(parent.fsName + "/" + name);
+  if (!outFolder.exists) outFolder.create();
 
-    var stdDir = new Folder(output + "/Standard");
-    if (!stdDir.exists) stdDir.create();
-    var rotDir = new Folder(output + "/Rotated");
-    if (!rotDir.exists) rotDir.create();
+  // 3) find your images
+  var files = src.getFiles(/\.(jpe?g|png|psd)$/i);
+  alert("Found " + files.length + " image(s).");
 
-    for (var i = 0; i < files.length; i++) {
-        try {
-            processStandard(files[i], stdDir.fsName);
-            processRotated (files[i], rotDir.fsName);
-        } catch (e) {
-            alert("Error on " + files[i].name + ":\n" + e.message);
-        }
+  // 4) batch-process, sending both variants into the same folder
+  for (var i = 0; i < files.length; i++) {
+    try {
+      processStandard(files[i], outFolder.fsName);  // saves .105.jpg
+      processRotated (files[i], outFolder.fsName);  // saves .103.jpg
+    } catch (e) {
+      alert("Error on " + files[i].name + ":\n" + e.message);
     }
+  }
 
-    alert("✅ All done! Check “Standard” & “Rotated” folders.");
+  alert("✅ Done! All output in “" + outFolder.fsName + "”");
 }
 
 run();

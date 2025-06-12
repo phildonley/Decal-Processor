@@ -90,31 +90,44 @@ function processImage(file, stdFS, rotFS) {
 
 // ——— Resize + Center ———
 function resizeAndCenterLayer(doc, layer, maxW, maxH) {
-  try {
-    if (layer.kind === LayerKind.SMARTOBJECT) layer.rasterize(RasterizeType.ENTIRELAYER);
-    if (layer.isBackgroundLayer) layer.isBackgroundLayer = false;
+    if (layer.kind === LayerKind.SMARTOBJECT) 
+        layer.rasterize(RasterizeType.ENTIRELAYER);
+    if (layer.isBackgroundLayer)   
+        layer.isBackgroundLayer = false;
 
-    var b = layer.bounds;
-    var w = b.as("px") - b.as("px");
-    var h = b.as("px") - b.as("px");
-        
-    if (w < 2 || h < 2) throw new Error("Too small: " + w + "×" + h);
+    // grab the corners
+    var b      = layer.bounds;
+    var left   = b[0].as("px");
+    var top    = b[1].as("px");
+    var right  = b[2].as("px");
+    var bottom = b[3].as("px");
 
+    var w = right - left;
+    var h = bottom - top;
+    if (w < 2 || h < 2) 
+        throw new Error("Too small: " + w + "×" + h);
+
+    // scale to fit inside maxW × maxH
     var scale = Math.min(maxW / w, maxH / h);
     layer.resize(scale * 100, scale * 100);
 
-    b = layer.bounds;
-    w = b.as("px") - b.as("px");
-    h = b.as("px") - b.as("px");
-    
-    var dx = (doc.width.as("px") / 2) - (b.as("px") + w/2);
-    var dy = (doc.height.as("px") / 2) - (b.as("px") + h/2);
-        
+    // re-read bounds after resize
+    b      = layer.bounds;
+    left   = b[0].as("px");
+    top    = b[1].as("px");
+    right  = b[2].as("px");
+    bottom = b[3].as("px");
+
+    w = right - left;
+    h = bottom - top;
+
+    // center on the 1600×1600 canvas
+    var dx = (doc.width.as("px")  / 2) - (left + w/2);
+    var dy = (doc.height.as("px") / 2) - (top  + h/2);
     layer.translate(dx, dy);
-    
-  } catch (e) {
+}  
+} catch (e) {
     throw new Error("Failed during resize and center: " + e.message);
-  }
 }
 
 // ——— Drop Shadow ———
